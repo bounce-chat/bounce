@@ -156,13 +156,13 @@ func (b *Bounce) keepEncryptedDevicePruned() {
 func (b *Bounce) pruneEncryptedDevice() {
 	now := time.Now().Unix()
 	cutoff := time.Now().Add(-encryptedHostRetention).Unix()
-	err := deleteEach[encryptedFrame](b.database, "(delete_at != 0 AND delete_at <= ?) OR saved_at < ?", now, cutoff)
+	err := deleteEach[encryptedFrame](b.database, "(delete_at != 0 AND delete_at <= ?) OR (expires = ? AND saved_at < ?)", now, true, cutoff)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error pruning encrypted frames")
 	}
-	err = deleteEach[encryptedChunkStorageRequest](b.database, "(delete_at != 0 AND delete_at <= ?) OR timestamp < ?", now, cutoff)
+	err = deleteEach[encryptedChunkStorageRequest](b.database, "(delete_at != 0 AND delete_at <= ?) OR (can_batch_delete = ? AND timestamp < ?)", now, true, cutoff)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -510,6 +510,7 @@ type encryptedFrame struct {
 	FromOwner bool  `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:1"` // Stored by a peer that proved it is the owner, so not counted against the untrusted storage budget
 	Payload   []byte
 	DeleteAt  int64
+	Expires   bool   // True for messages and other ephemeral frames that expire after encryptedHostRetention; false for persistent state frames
 	Slot      []byte `gorm:"index"` // The slot this copy occupies; see "Slots" in mailbox.go.  Random for all but drafts.
 	Version   int64  // Which version of the slot's contents this is; a newer one replaces this copy
 	Mailboxes []mailboxEntry

@@ -222,21 +222,37 @@ func (b *Bounce) reKeySecrets(br broadcastable) [][]byte {
 }
 
 // copySettingsFor decides, per frame type, how a copy on an encrypted device behaves beyond its mailboxes: when the
-// host should delete it on its own, and which slot it occupies (see mailbox.go).  Drafts take the slot of their
-// thread so the host keeps only the newest, including an empty one that clears the thread, which stays until the
-// next draft replaces it so that a device offline for a long time still learns the draft was cleared.  Everything
-// else takes a random slot.
+// host should delete it on its own, whether it expires after encryptedHostRetention, and which slot it occupies (see
+// mailbox.go).  Messages, receipts, confirmations, chunk offers, and message attachment files expire after
+// encryptedHostRetention (matching undeliverableAfter on normal devices), while persistent state frames (contacts,
+// devices, profile/group updates, settings, drafts, and icons) stay indefinitely so a device can catch up after months
+// offline.  Drafts take the slot of their thread so the host keeps only the newest, including an empty one that clears
+// the thread, which stays until the next draft replaces it.  Everything else takes a random slot.
 func (b *Bounce) copySettingsFor(br broadcastable) copySettings {
 	settings := copySettings{Slot: randomSlot()}
-	switch item := br.(type) {
-	case *directMessage:
-		settings.DeleteAt = item.DeleteAt
-	case *groupMessage:
-		settings.DeleteAt = item.DeleteAt
-	case *draft:
-		if me, ok := b.currentUser(); ok {
-			settings.Slot = draftSlot(syncThreadSecret(me.PrivateECDHKey), item.Thread)
-			settings.Version = item.Timestamp
+	switch br.getType() {
+	case typeDirectMessage:
+		settings.Expires = true
+		if item, ok := br.(*directMessage); ok {
+			settings.DeleteAt = item.DeleteAt
+		}
+	case typeGroupMessage:
+		settings.Expires = true
+		if item, ok := br.(*groupMessage); ok {
+			settings.DeleteAt = item.DeleteAt
+		}
+	case typeConfirmation, typeReadReceipt, typeChunkOffer, typeEncryptedChunkOffer:
+		settings.Expires = true
+	case typeFile:
+		if item, ok := br.(*file); ok && item.Type == fileTypeMessageAttachment {
+			settings.Expires = true
+		}
+	case typeDraft:
+		if item, ok := br.(*draft); ok {
+			if me, ok := b.currentUser(); ok {
+				settings.Slot = draftSlot(syncThreadSecret(me.PrivateECDHKey), item.Thread)
+				settings.Version = item.Timestamp
+			}
 		}
 	}
 	return settings

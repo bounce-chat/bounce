@@ -221,87 +221,226 @@ func TestMailboxWrapKeyIsUniquePerCopyAndBoundToCopyID(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestHostRetentionExpiresOldCopiesAndChunkRequests(t *testing.T) {
+func TestHostRetentionExpiresOnlyMessagesAndAttachmentsWhileKeepingState(t *testing.T) {
 	_, alice, bob, _ := createUsersAndGroups(t)
 	host, key := newEncryptedDevice(t)
 	claimEncryptedDevice(t, bob, host, key)
 	waitForOwnerMailboxes(t, host)
 	disconnectFrom(t, bob, host)
 
-	oldCopy := sealForHost(t, alice, signedDM(alice, bob.currentUserID(), "expired"), host)
-	freshCopy := sealForHost(t, alice, signedDM(alice, bob.currentUserID(), "fresh"), host)
-	for _, ef := range []*encryptedFrame{oldCopy, freshCopy} {
+	oldDM := sealForHost(t, alice, signedDM(alice, bob.currentUserID(), "expired"), host)
+	freshDM := sealForHost(t, alice, signedDM(alice, bob.currentUserID(), "fresh"), host)
+	assert.True(t, oldDM.Expires)
+	assert.True(t, freshDM.Expires)
+
+	profileUpdate := &updateUser{
+		ID:        NewID(),
+		Target:    bob.currentUserID(),
+		Type:      updateUserTypeUpdateName,
+		Data:      []byte("Persistent Name"),
+		Timestamp: time.Now().Unix(),
+	}
+	oldState := sealForHost(t, bob, profileUpdate, host)
+	assert.False(t, oldState.Expires)
+
+	// Attachment files expire; profile and group icon files do not
+	assert.True(t, bob.copySettingsFor(&file{ID: NewID(), Type: fileTypeMessageAttachment}).Expires)
+	assert.False(t, bob.copySettingsFor(&file{ID: NewID(), Type: fileTypeUserImage}).Expires)
+	assert.False(t, bob.copySettingsFor(&file{ID: NewID(), Type: fileTypeGroupImage}).Expires)
+
+	for _, ef := range []*encryptedFrame{oldDM, freshDM} {
 		payload, _ := msgpack.Marshal(ef)
 		host.handleEncryptedFrame(alice.network.Address(), payload, false)
 	}
+	statePayload, _ := msgpack.Marshal(oldState)
+	host.handleEncryptedFrame(bob.network.Address(), statePayload, false)
 
 	expiredAt := time.Now().Add(-encryptedHostRetention - time.Hour).Unix()
-	assert.NoError(t, host.database.Model(&encryptedFrame{}).Where("id = ?", oldCopy.ID).Update("saved_at", expiredAt).Error)
+	assert.NoError(t, host.database.Model(&encryptedFrame{}).Where("id IN ?", []ID{oldDM.ID, oldState.ID}).Update("saved_at", expiredAt).Error)
 
-	// Store an expired chunk request and a fresh chunk request with blobs and offers
-	dmLabel := oldCopy.Mailboxes[0].Label
-	oldHash := hashString(blake3.Sum256([]byte("expired-chunk")))
-	freshHash := hashString(blake3.Sum256([]byte("fresh-chunk")))
-	oldPath := host.platform.ConfigDirectory + "/blobs/" + oldHash
-	freshPath := host.platform.ConfigDirectory + "/blobs/" + freshHash
-	assert.NoError(t, os.WriteFile(oldPath, []byte("expired-chunk"), 0600))
-	assert.NoError(t, os.WriteFile(freshPath, []byte("fresh-chunk"), 0600))
+	// Store an expired attachment chunk (CanBatchDelete=true), an expired icon chunk (CanBatchDelete=false), and a fresh attachment chunk
+	dmLabel := oldDM.Mailboxes[0].Label
+	oldAttachHash := hashString(blake3.Sum256([]byte("expired-attachment")))
+	oldIconHash := hashString(blake3.Sum256([]byte("persistent-icon")))
+	freshAttachHash := hashString(blake3.Sum256([]byte("fresh-attachment")))
+	oldAttachPath := host.platform.ConfigDirectory + "/blobs/" + oldAttachHash
+	oldIconPath := host.platform.ConfigDirectory + "/blobs/" + oldIconHash
+	freshAttachPath := host.platform.ConfigDirectory + "/blobs/" + freshAttachHash
+	assert.NoError(t, os.WriteFile(oldAttachPath, []byte("expired-attachment"), 0600))
+	assert.NoError(t, os.WriteFile(oldIconPath, []byte("persistent-icon"), 0600))
+	assert.NoError(t, os.WriteFile(freshAttachPath, []byte("fresh-attachment"), 0600))
 
-	oldSR := encryptedChunkStorageRequest{
+	oldAttachSR := encryptedChunkStorageRequest{
 		ID:             NewID(),
-		Hash:           oldHash,
+		Hash:           oldAttachHash,
+		CanBatchDelete: true,
 		Source:         bob.network.Address(),
 		Downloaded:     true,
-		FullPath:       oldPath,
+		FullPath:       oldAttachPath,
 		OwnerRequested: true,
-		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: oldHash, Label: dmLabel}},
+		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: oldAttachHash, Label: dmLabel}},
 	}
-	freshSR := encryptedChunkStorageRequest{
+	oldIconSR := encryptedChunkStorageRequest{
 		ID:             NewID(),
-		Hash:           freshHash,
+		Hash:           oldIconHash,
+		CanBatchDelete: false,
 		Source:         bob.network.Address(),
 		Downloaded:     true,
-		FullPath:       freshPath,
+		FullPath:       oldIconPath,
 		OwnerRequested: true,
-		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: freshHash, Label: dmLabel}},
+		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: oldIconHash, Label: dmLabel}},
 	}
-	assert.NoError(t, host.database.Create(&oldSR).Error)
-	assert.NoError(t, host.database.Create(&freshSR).Error)
-	assert.NoError(t, host.database.Model(&encryptedChunkStorageRequest{}).Where("id = ?", oldSR.ID).Update("timestamp", expiredAt).Error)
-	assert.NoError(t, host.database.Create(&encryptedChunkOffer{
-		SignedFrame: SignedFrame{OriginalPayload: []byte("old"), Signature: []byte("sig"), Signer: "signer"},
-		ID:          NewID(),
-		Hash:        oldHash,
-		Location:    host.network.Address(),
-	}).Error)
-	assert.NoError(t, host.database.Create(&encryptedChunkOffer{
-		SignedFrame: SignedFrame{OriginalPayload: []byte("fresh"), Signature: []byte("sig"), Signer: "signer"},
-		ID:          NewID(),
-		Hash:        freshHash,
-		Location:    host.network.Address(),
-	}).Error)
+	freshAttachSR := encryptedChunkStorageRequest{
+		ID:             NewID(),
+		Hash:           freshAttachHash,
+		CanBatchDelete: true,
+		Source:         bob.network.Address(),
+		Downloaded:     true,
+		FullPath:       freshAttachPath,
+		OwnerRequested: true,
+		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: freshAttachHash, Label: dmLabel}},
+	}
+	assert.NoError(t, host.database.Create(&oldAttachSR).Error)
+	assert.NoError(t, host.database.Create(&oldIconSR).Error)
+	assert.NoError(t, host.database.Create(&freshAttachSR).Error)
+	assert.NoError(t, host.database.Model(&encryptedChunkStorageRequest{}).Where("id IN ?", []ID{oldAttachSR.ID, oldIconSR.ID}).Update("timestamp", expiredAt).Error)
+	for _, h := range []string{oldAttachHash, oldIconHash, freshAttachHash} {
+		assert.NoError(t, host.database.Create(&encryptedChunkOffer{
+			SignedFrame: SignedFrame{OriginalPayload: []byte(h), Signature: []byte("sig"), Signer: "signer"},
+			ID:          NewID(),
+			Hash:        h,
+			Location:    host.network.Address(),
+		}).Error)
+	}
 
 	ownerMailboxCountBefore := countWhere(t, host, &ownerMailbox{}, "1 = 1")
 	assert.True(t, ownerMailboxCountBefore > 0)
 
 	host.pruneEncryptedDevice()
 
-	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", oldCopy.ID))
-	assert.Equal(t, int64(0), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", oldCopy.ID))
-	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", freshCopy.ID))
+	// Expired DM is gone, while fresh DM and expired persistent state frame survive
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", oldDM.ID))
+	assert.Equal(t, int64(0), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", oldDM.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", freshDM.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", oldState.ID))
 
-	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", oldSR.ID))
-	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", oldHash))
-	_, err := os.Stat(oldPath)
+	// Expired attachment chunk is gone, while expired icon chunk and fresh attachment chunk survive
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", oldAttachSR.ID))
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", oldAttachHash))
+	_, err := os.Stat(oldAttachPath)
 	assert.True(t, os.IsNotExist(err))
 
-	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", freshSR.ID))
-	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", freshHash))
-	_, err = os.Stat(freshPath)
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", oldIconSR.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", oldIconHash))
+	_, err = os.Stat(oldIconPath)
+	assert.NoError(t, err)
+
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", freshAttachSR.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", freshAttachHash))
+	_, err = os.Stat(freshAttachPath)
 	assert.NoError(t, err)
 
 	// Long-lived owner mailboxes are not pruned when copies expire
 	assert.Equal(t, ownerMailboxCountBefore, countWhere(t, host, &ownerMailbox{}, "1 = 1"))
+}
+
+// addUser, groupCreation, and group invites addressed to us carry a sync-mailbox entry on our own encrypted devices so
+// an offline sibling device that does not yet know the new contact or group can still bootstrap them from the host.
+// Another user's encrypted device never receives our sync mailbox entry.
+func TestOfflineSiblingDeviceBootstrapsNewContactsAndGroupsFromOwnersHost(t *testing.T) {
+	quickReferenceRetries(t)
+	me, alice, _, groupID := createUsersAndGroups(t)
+	waitForGroupKeys(t, me, groupID, 1)
+	waitForGroupKeys(t, alice, groupID, 1)
+
+	mySyncSecret := syncThreadSecret(mustCurrentUser(me).PrivateECDHKey)
+	mySyncLabel := mailboxLabel(mySyncSecret)
+	siblingSyncOnly := &mailboxIndex{
+		byLabel: map[string]mailbox{
+			string(mySyncLabel): {Label: mySyncLabel, Secret: mySyncSecret, Kind: mailboxKindSync, Thread: me.currentUserID()},
+		},
+	}
+
+	myHost := fakeEncryptedDeviceOf(t, me.currentUserID()).Address()
+	alicesHost := fakeEncryptedDeviceOf(t, alice.currentUserID()).Address()
+
+	hasLabel := func(ef *encryptedFrame, want []byte) bool {
+		for _, entry := range ef.Mailboxes {
+			if bytes.Equal(entry.Label, want) {
+				return true
+			}
+		}
+		return false
+	}
+	openWithSyncOnly := func(ef *encryptedFrame) (frame, bool) {
+		for _, er := range receivesOf(ef) {
+			if f, err := siblingSyncOnly.open(er); err == nil {
+				return f, true
+			}
+		}
+		return frame{}, false
+	}
+
+	// 1. addUser: sync entry on our own host, absent on Alice's host
+	au := &addUser{ID: NewID(), Xor: xor(me.currentUserID(), alice.currentUserID())}
+	auOnMine := me.sealForHost(au, myHost)
+	assert.True(t, auOnMine != nil)
+	assert.True(t, hasLabel(auOnMine, mySyncLabel))
+	opened, ok := openWithSyncOnly(auOnMine)
+	assert.True(t, ok)
+	assert.Equal(t, au.ID, opened.ID)
+
+	auOnAlices := me.sealForHost(au, alicesHost)
+	assert.True(t, auOnAlices != nil)
+	assert.False(t, hasLabel(auOnAlices, mySyncLabel))
+
+	// 2. groupCreation: sync entry on our own host, absent on Alice's host
+	var gc groupCreation
+	assert.NoError(t, me.database.First(&gc, "id = ?", groupID).Error)
+	gcOnMine := me.sealForHost(&gc, myHost)
+	assert.True(t, gcOnMine != nil)
+	assert.True(t, hasLabel(gcOnMine, mySyncLabel))
+	opened, ok = openWithSyncOnly(gcOnMine)
+	assert.True(t, ok)
+	assert.Equal(t, gc.ID, opened.ID)
+
+	gcOnAlices := me.sealForHost(&gc, alicesHost)
+	assert.True(t, gcOnAlices != nil)
+	assert.False(t, hasLabel(gcOnAlices, mySyncLabel))
+
+	// 3. Invite updateGroup addressed to us: sync entry on our own host, absent on Alice's host
+	assert.NoError(t, alice.CreateGroup(NewGroup{Name: "Alice Group"}))
+	var aliceGroup group
+	assert.NoError(t, alice.database.First(&aliceGroup, "name = ?", "Alice Group").Error)
+	waitForGroupKeys(t, alice, aliceGroup.ID, 1)
+	assert.NoError(t, alice.InviteUserToGroup(aliceGroup.ID, me.currentUserID()))
+
+	var invite updateGroup
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var agc groupCreation
+		if me.database.Where("target = ? AND type = ?", aliceGroup.ID, updateGroupTypeInviteUser).First(&invite).Error == nil &&
+			me.database.First(&agc, "id = ?", aliceGroup.ID).Error == nil {
+			if _, err := me.currentGroupState(aliceGroup.ID); err == nil {
+				break
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.NotEqual(t, NilID, invite.ID)
+	waitForGroupKeys(t, me, aliceGroup.ID, 1)
+	assert.NoError(t, me.AcceptInvite(aliceGroup.ID))
+
+	inviteOnMine := me.sealForHost(&invite, myHost)
+	assert.True(t, inviteOnMine != nil)
+	assert.True(t, hasLabel(inviteOnMine, mySyncLabel))
+	opened, ok = openWithSyncOnly(inviteOnMine)
+	assert.True(t, ok)
+	assert.Equal(t, invite.ID, opened.ID)
+
+	inviteOnAlices := me.sealForHost(&invite, alicesHost)
+	assert.True(t, inviteOnAlices != nil)
+	assert.False(t, hasLabel(inviteOnAlices, mySyncLabel))
 }
 
 func TestAHostLearnsAboutNewConversationsWithoutReconnecting(t *testing.T) {
@@ -1121,14 +1260,15 @@ func TestClearingOneConversationLeavesMultiMailboxGlobalFramesForOtherConversati
 	claimEncryptedDevice(t, me, host, key)
 	waitForOwnerMailboxes(t, host)
 
-	// Disconnect Me so UpdateProfileName does not live-broadcast under a different copy ID before we store efGlobal
-	disconnectFrom(t, me, host)
-
 	// Seal a profile update (global frame: in Group G AND in DM(me, carol)) and a DM with Carol onto Me's host
-	assert.NoError(t, me.UpdateProfileName("New Name"))
-	var profileUpdate updateUser
-	assert.NoError(t, me.database.Where("target = ? AND type = ?", me.currentUserID(), updateUserTypeUpdateName).First(&profileUpdate).Error)
-	efGlobal := sealForHost(t, me, &profileUpdate, host)
+	profileUpdate := &updateUser{
+		ID:        NewID(),
+		Target:    me.currentUserID(),
+		Type:      updateUserTypeUpdateName,
+		Data:      []byte("New Name"),
+		Timestamp: time.Now().Unix(),
+	}
+	efGlobal := sealForHost(t, me, profileUpdate, host)
 	assert.Equal(t, 2, len(efGlobal.Mailboxes))
 	efGlobalPayload, _ := msgpack.Marshal(efGlobal)
 	host.handleEncryptedFrame(me.network.Address(), efGlobalPayload, false)

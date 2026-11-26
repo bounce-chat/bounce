@@ -458,8 +458,11 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		go b.sendReferences(peer)
 	}
 
-	// Connect to this new user if needed
+	// Connect to this new user if needed and tell connected encrypted devices about the new mailbox(es)
 	go b.auditPeers()
+	if userIsNew || len(validDevices) > 0 {
+		go b.refreshMailboxRequests()
+	}
 
 	// Inform the UI that a new friend has been added
 	if userIsNew {

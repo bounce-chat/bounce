@@ -30,8 +30,9 @@ import (
 // who or what.
 //
 // Mailboxes are long lived so that an encrypted device can stay online indefinitely without its owner connecting and
-// still accept frames for the owner's conversations; undelivered copies and chunks expire on the host after
-// encryptedHostRetention (30 days) or on explicit history clears.
+// still accept frames for the owner's conversations.  Messages and other ephemeral copies expire on the host after
+// encryptedHostRetention (matching undeliverableAfter on normal devices) or on explicit history clears, while
+// persistent state frames (contacts, devices, groups, settings, drafts, icons) stay available indefinitely.
 //
 // Each stored frame carries, for every mailbox it is in, the data encryption key wrapped under a per-copy key derived
 // from the mailbox secret and the copy's random host ID.  A group of five hundred members costs one mailbox entry,
@@ -43,8 +44,9 @@ import (
 // mailbox entry therefore carries a tag derived from the mailbox secret and the frame's real ID, which lets the
 // host recognise a copy of a frame it already holds without being able to tell which frame that is.
 
-// How long a host keeps stored frames and chunk storage requests before expiring them.  A var so tests can shrink it.
-var encryptedHostRetention = 30 * 24 * time.Hour
+// How long a host keeps expiring frames (messages, receipts, attachment metadata) and batch-deletable chunk storage
+// requests before expiring them.  Matches undeliverableAfter on normal devices.  A var so tests can shrink it.
+var encryptedHostRetention = undeliverableAfter
 
 const mailboxLabelSize = 32
 const mailboxTagSize = 16
@@ -254,6 +256,12 @@ func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 		secrets = append(secrets, threadSecret{secret: syncThreadSecret(me.PrivateECDHKey), user: me.ID})
 	case scopeUser, scopeCustom:
 		addUsers(b.getUsersInScope(br))
+		if br.getType() == typeAddUser {
+			// Include our sync mailbox so an offline sibling device that does not yet know this contact can still
+			// pull the addUser from our own encrypted device, learn the contact's key, and derive the DM mailbox.
+			// secretsForOwner restricts this entry to our own hosts.
+			secrets = append(secrets, threadSecret{secret: syncThreadSecret(me.PrivateECDHKey), user: me.ID})
+		}
 	case scopeGlobal:
 		if br.getAuthor() != me.ID {
 			// Someone else's frame is passed on to the users it is for through the DM we share with each
@@ -342,6 +350,14 @@ func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 				addUsers(invitees)
 			}
 		}
+
+		// Include our sync mailbox on groupCreation and on any invite updateGroup addressed to us so an offline
+		// sibling device that does not yet hold this group's key chain can still pull the group bootstrap frames
+		// from our own encrypted device, unwrap the keys, and derive the group's mailboxes.  secretsForOwner
+		// restricts this entry to our own hosts.
+		if br.getType() == typeGroupCreation || isInviteFor(br, me.ID) {
+			secrets = append(secrets, threadSecret{secret: syncThreadSecret(me.PrivateECDHKey), user: me.ID})
+		}
 	default:
 		return nil, errors.New("unknown scope for sealing")
 	}
@@ -350,6 +366,27 @@ func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 		secrets = append(secrets, threadSecret{secret: syncThreadSecret(me.PrivateECDHKey), user: me.ID})
 	}
 	return secrets, nil
+}
+
+// isInviteFor reports whether br is a group invite updateGroup targeting userID
+func isInviteFor(br broadcastable, userID ID) bool {
+	if br.getType() != typeUpdateGroup {
+		return false
+	}
+	ug, ok := br.(*updateGroup)
+	if !ok || ug.Type != updateGroupTypeInviteUser {
+		return false
+	}
+	for _, w := range ug.KeyWraps {
+		if w.UserID == userID {
+			return true
+		}
+	}
+	var invited user
+	if err := msgpack.Unmarshal(ug.Data, &invited); err == nil && invited.ID == userID {
+		return true
+	}
+	return false
 }
 
 // encryptedDeviceOwner returns the user an encrypted device belongs to, or nil if we do not know
@@ -650,6 +687,7 @@ const draftSlotInfo = "bounce-draft-slot"
 // What a sealed copy carries besides its mailboxes
 type copySettings struct {
 	DeleteAt int64
+	Expires  bool
 	Slot     []byte
 	Version  int64
 }
@@ -723,6 +761,7 @@ func sealFrame(br broadcastable, secrets [][]byte, settings copySettings) (*encr
 		ID:        hostID,
 		Payload:   ciphertext,
 		DeleteAt:  settings.DeleteAt,
+		Expires:   settings.Expires,
 		Slot:      slot,
 		Version:   settings.Version,
 		Mailboxes: entries,
