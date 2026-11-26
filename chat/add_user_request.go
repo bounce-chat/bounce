@@ -7,7 +7,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 )
 
@@ -67,6 +66,14 @@ func (b *Bounce) claimAddUserOffer(secret string) (offer addUserOffer, found boo
 }
 
 func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	if len(payload) > maximumAddUserFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring add user request larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	// Unmarshal the payload
 	var aur addUserRequest
 	err := msgpack.Unmarshal(payload, &aur)
@@ -74,6 +81,14 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request")
+		return nil, false
+	}
+
+	if len(aur.RequesterUser) > maximumAddUserRecordSize {
+		log.WithFields(log.Fields{
+			"peer":                peer,
+			"requester_user_size": len(aur.RequesterUser),
+		}).Warn("rejecting add user request with oversized user record")
 		return nil, false
 	}
 
@@ -189,10 +204,14 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 			"error": err.Error(),
 		}).Fatal("cannot msgpack marshal offer user while handling user request")
 	}
-	requesterUserHash := blake3.Sum256(aur.RequesterUser)
+	auNonce := newNonce()
+	auTimestamp := time.Now().Unix()
+	signatureDigest := addUserSignatureDigest(auNonce, auTimestamp, offerBytes, aur.RequesterUser, b.network.Address(), peer)
 	b.sendDirect(peer, &addUserRequestAccepted{
+		Nonce:          auNonce,
+		Timestamp:      auTimestamp,
 		OfferUser:      offerBytes,
-		OfferSignature: b.network.Sign(requesterUserHash[:]),
+		OfferSignature: b.network.Sign(signatureDigest),
 	})
 
 	return nil, false

@@ -148,18 +148,18 @@ func TestAnAddUserCannotBeRedefinedUnderItsID(t *testing.T) {
 	theirBytes, err := msgpack.Marshal(theirUser)
 	assert.NoError(t, err)
 	myBytes := bnc01MarshalUser(me)
-	theirHash, myHash := blake3.Sum256(theirBytes), blake3.Sum256(myBytes)
 	au := addUser{
-		Nonce:              newNonce(),
-		Xor:                xor(theirID, me.currentUserID()),
-		Timestamp:          time.Now().Unix(),
-		OfferUser:          theirBytes,
-		RequesterUser:      myBytes,
-		OfferDevice:        them.addr(),
-		RequesterDevice:    me.network.Address(),
-		RequesterSignature: me.network.Sign(theirHash[:]),
-		OfferSignature:     them.sign(myHash[:]),
+		Nonce:           newNonce(),
+		Xor:             xor(theirID, me.currentUserID()),
+		Timestamp:       time.Now().Unix(),
+		OfferUser:       theirBytes,
+		RequesterUser:   myBytes,
+		OfferDevice:     them.addr(),
+		RequesterDevice: me.network.Address(),
 	}
+	digest := addUserSignatureDigest(au.Nonce, au.Timestamp, au.OfferUser, au.RequesterUser, au.OfferDevice, au.RequesterDevice)
+	au.RequesterSignature = me.network.Sign(digest)
+	au.OfferSignature = them.sign(digest)
 	au.ID = au.generateID()
 	payload, err := msgpack.Marshal(&au)
 	assert.NoError(t, err)

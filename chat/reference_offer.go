@@ -577,7 +577,7 @@ func (b *Bounce) getAddUsersToOffer(address string, userID ID) []frameReference 
 
 	if userID == b.currentUserID() {
 		err := b.database.
-			Select("add_users.*").
+			Select("add_users.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeAddUser).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentAddUsers).Error
@@ -588,7 +588,7 @@ func (b *Bounce) getAddUsersToOffer(address string, userID ID) []frameReference 
 		}
 	} else {
 		err := b.database.
-			Select("add_users.*").
+			Select("add_users.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeAddUser).
 			Where("delivery_records.id IS NULL AND add_users.xor = ?", xor(b.currentUserID(), userID)).
 			Find(&unsentAddUsers).Error

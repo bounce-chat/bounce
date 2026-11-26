@@ -6,7 +6,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/zeebo/blake3"
 )
 
 func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
@@ -17,22 +16,21 @@ func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
 
 	meUser, _ := me.currentUser()
 	meBytes, _ := msgpack.Marshal(meUser)
-	meBytesHash := blake3.Sum256(meBytes)
 	carolUser, _ := carol.currentUser()
 	carolBytes, _ := msgpack.Marshal(carolUser)
-	carolBytesHash := blake3.Sum256(carolBytes)
 
 	au := addUser{
-		Nonce:              newNonce(),
-		Xor:                xor(carol.currentUserID(), me.currentUserID()),
-		Timestamp:          time.Now().Unix(),
-		OfferUser:          meBytes,
-		RequesterUser:      carolBytes,
-		OfferDevice:        me.network.Address(),
-		RequesterDevice:    carol.network.Address(),
-		OfferSignature:     me.network.Sign(carolBytesHash[:]),
-		RequesterSignature: carol.network.Sign(meBytesHash[:]),
+		Nonce:           newNonce(),
+		Xor:             xor(carol.currentUserID(), me.currentUserID()),
+		Timestamp:       time.Now().Unix(),
+		OfferUser:       meBytes,
+		RequesterUser:   carolBytes,
+		OfferDevice:     me.network.Address(),
+		RequesterDevice: carol.network.Address(),
 	}
+	digest := addUserSignatureDigest(au.Nonce, au.Timestamp, au.OfferUser, au.RequesterUser, au.OfferDevice, au.RequesterDevice)
+	au.OfferSignature = me.network.Sign(digest)
+	au.RequesterSignature = carol.network.Sign(digest)
 	au.ID = au.generateID()
 	auBytes, _ := msgpack.Marshal(&au)
 	myBr, _ := me.handleAddUser(carol.network.Address(), auBytes, false)

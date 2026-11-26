@@ -8,7 +8,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/zeebo/blake3"
 )
 
 // A device group is validated in full whenever a whole user record arrives, but a single new device is checked only
@@ -451,7 +450,7 @@ func TestAddUserCannotAdoptDeviceIntroducedByRevokedSyncDevice(t *testing.T) {
 	counterpartyKey := bnc01NewOnion()
 	counterparty := bnc01SyntheticUser("Counterparty", counterpartyKey, now)
 	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, backdatedKey)
-	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	_, accepted = me.handleAddUser(counterpartyKey.addr(), payload, false)
 
 	_, exists := me.getDeviceFromAddress(backdated.Address)
 	assert.False(t, exists, "addUser cannot adopt a backdated device introduced by a revoked sync device")
@@ -539,23 +538,22 @@ func TestRejectedAddUserDoesNotSaveDevicesForNewCounterparty(t *testing.T) {
 	assert.NoError(t, err)
 	requesterBytes, err := msgpack.Marshal(myRecord)
 	assert.NoError(t, err)
-	offerHash := blake3.Sum256(offerBytes)
-	requesterHash := blake3.Sum256(requesterBytes)
 	au := addUser{
-		Nonce:              newNonce(),
-		Xor:                xor(counterpartyID, me.currentUserID()),
-		Timestamp:          now,
-		OfferUser:          offerBytes,
-		RequesterUser:      requesterBytes,
-		OfferDevice:        omitted.Address,
-		RequesterDevice:    me.network.Address(),
-		OfferSignature:     omittedKey.sign(requesterHash[:]),
-		RequesterSignature: me.network.Sign(offerHash[:]),
+		Nonce:           newNonce(),
+		Xor:             xor(counterpartyID, me.currentUserID()),
+		Timestamp:       now,
+		OfferUser:       offerBytes,
+		RequesterUser:   requesterBytes,
+		OfferDevice:     omitted.Address,
+		RequesterDevice: me.network.Address(),
 	}
+	digest := addUserSignatureDigest(au.Nonce, au.Timestamp, au.OfferUser, au.RequesterUser, au.OfferDevice, au.RequesterDevice)
+	au.OfferSignature = omittedKey.sign(digest)
+	au.RequesterSignature = me.network.Sign(digest)
 	au.ID = au.generateID()
 	payload, err := msgpack.Marshal(&au)
 	assert.NoError(t, err)
-	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	_, accepted = me.handleAddUser(omitted.Address, payload, false)
 	assert.False(t, accepted)
 
 	for _, d := range []device{validDevice, omitted} {
@@ -615,23 +613,22 @@ func TestAddUserCarriedRecordsRespectRevokeKeepList(t *testing.T) {
 	assert.NoError(t, err)
 	requesterBytes, err := msgpack.Marshal(myRecord)
 	assert.NoError(t, err)
-	offerHash := blake3.Sum256(offerBytes)
-	requesterHash := blake3.Sum256(requesterBytes)
 	au := addUser{
-		Nonce:              newNonce(),
-		Xor:                xor(bobID, me.currentUserID()),
-		Timestamp:          now,
-		OfferUser:          offerBytes,
-		RequesterUser:      requesterBytes,
-		OfferDevice:        listed.Address,
-		RequesterDevice:    me.network.Address(),
-		OfferSignature:     listedKey.sign(requesterHash[:]),
-		RequesterSignature: me.network.Sign(offerHash[:]),
+		Nonce:           newNonce(),
+		Xor:             xor(bobID, me.currentUserID()),
+		Timestamp:       now,
+		OfferUser:       offerBytes,
+		RequesterUser:   requesterBytes,
+		OfferDevice:     listed.Address,
+		RequesterDevice: me.network.Address(),
 	}
+	digest := addUserSignatureDigest(au.Nonce, au.Timestamp, au.OfferUser, au.RequesterUser, au.OfferDevice, au.RequesterDevice)
+	au.OfferSignature = listedKey.sign(digest)
+	au.RequesterSignature = me.network.Sign(digest)
 	au.ID = au.generateID()
 	payload, err := msgpack.Marshal(&au)
 	assert.NoError(t, err)
-	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	_, accepted = me.handleAddUser(listed.Address, payload, false)
 	assert.True(t, accepted, "a retained device unknown to us can sign for the counterparty")
 
 	_, exists := me.getDeviceFromAddress(listed.Address)
@@ -645,16 +642,16 @@ func TestAddUserCarriedRecordsRespectRevokeKeepList(t *testing.T) {
 	bobRecord.Devices = append(bobRecord.Devices, additional)
 	offerBytes, err = msgpack.Marshal(bobRecord)
 	assert.NoError(t, err)
-	offerHash = blake3.Sum256(offerBytes)
 	au.Nonce = newNonce()
 	au.OfferUser = offerBytes
 	au.OfferDevice = omitted.Address
-	au.OfferSignature = omittedKey.sign(requesterHash[:])
-	au.RequesterSignature = me.network.Sign(offerHash[:])
+	digest = addUserSignatureDigest(au.Nonce, au.Timestamp, au.OfferUser, au.RequesterUser, au.OfferDevice, au.RequesterDevice)
+	au.OfferSignature = omittedKey.sign(digest)
+	au.RequesterSignature = me.network.Sign(digest)
 	au.ID = au.generateID()
 	payload, err = msgpack.Marshal(&au)
 	assert.NoError(t, err)
-	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	_, accepted = me.handleAddUser(bobAddr, payload, false)
 	assert.False(t, accepted, "a counterparty device omitted by the revoke cannot authorize addUser")
 	_, exists = me.getDeviceFromAddress(additional.Address)
 	assert.True(t, exists, "a known counterparty's valid devices are kept even when addUser is rejected")
@@ -868,7 +865,7 @@ func TestAddUserCarriesAndAppliesDeviceRevocations(t *testing.T) {
 	assert.NotEqual(t, NilID, au.ID, "addUser handshake should complete when both users carry device revocations")
 
 	// Feed only the addUser frame offline into bobSync (no sockets, no catch-up, no separate updateDevice frames).
-	_, accepted = bobSync.handleAddUser("", au.getPayload(), false)
+	_, accepted = bobSync.handleAddUser(bob.network.Address(), au.getPayload(), false)
 	assert.True(t, accepted)
 
 	storedAliceRevoked, found := bobSync.getDeviceFromAddress(aliceRevoked.Address)

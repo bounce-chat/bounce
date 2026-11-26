@@ -24,10 +24,14 @@ const userIntroductionGroup = "group"
 var blockedUsers = map[ID]bool{}
 var blockedUsersMutex sync.Mutex
 
+const maximumUserImages = 128
+const maximumEncryptedDevicesPerUser = 100
+
 var errInvalidUserName = errors.New("invalid name")
 var errInvalidUserImages = errors.New("user images is not a list of IDs")
 var errInvalidEncryptedDevices = errors.New("user encrypted devices is not a list of addresses")
 var errTooManyDeviceRevocations = errors.New("user has too many device revocations")
+var errInvalidDeviceRevocation = errors.New("user device revocation frame is too large")
 
 type user struct {
 	ID                         ID `gorm:"primary_key;"`
@@ -128,8 +132,16 @@ func validUserRecord(u user) error {
 	if !validEncryptedDeviceList(u.EncryptedDevices) {
 		return errInvalidEncryptedDevices
 	}
+	if len(u.PublicECDHKey) != 0 && len(u.PublicECDHKey) != 32 {
+		return errInvalidKeyMaterial
+	}
 	if len(u.DeviceRevocations) > maximumDevicesPerUser {
 		return errTooManyDeviceRevocations
+	}
+	for _, rev := range u.DeviceRevocations {
+		if len(rev) > maximumSmallControlFramePayload {
+			return errInvalidDeviceRevocation
+		}
 	}
 	return nil
 }
@@ -138,7 +150,11 @@ func validEncryptedDeviceList(encryptedDevices string) bool {
 	if encryptedDevices == "" {
 		return true
 	}
-	for _, address := range strings.Split(encryptedDevices, ",") {
+	addresses := strings.Split(encryptedDevices, ",")
+	if len(addresses) > maximumEncryptedDevicesPerUser {
+		return false
+	}
+	for _, address := range addresses {
 		if !onionAddressRegex.MatchString(address) {
 			return false
 		}
@@ -147,8 +163,8 @@ func validEncryptedDeviceList(encryptedDevices string) bool {
 }
 
 func validImageHistory(images string) bool {
-	_, err := parseIDList(images)
-	return err == nil
+	ids, err := parseIDList(images)
+	return err == nil && len(ids) <= maximumUserImages
 }
 
 func (u *user) exportedUser() User {

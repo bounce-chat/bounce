@@ -2,11 +2,9 @@ package chat
 
 import (
 	"errors"
-	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 )
 
@@ -14,8 +12,10 @@ import (
 // in an add user.  When this is received the requester user can create their half of the signatures and broadcast
 // a complete add user.
 type addUserRequestAccepted struct {
+	Nonce          nonce
+	Timestamp      int64
 	OfferUser      []byte
-	OfferSignature []byte // signature of the requester user by the offer user's device
+	OfferSignature []byte // signature over the mutual addUser digest by the offer user's device
 }
 
 func (aura *addUserRequestAccepted) getType() uint16 {
@@ -33,6 +33,14 @@ func (aura *addUserRequestAccepted) getPayload() []byte {
 }
 
 func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	if len(payload) > maximumAddUserFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring add user request accepted larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	// Make sure we sent a request to this peer recently
 	if !pendingAddUserRequests.isExpectedFrom(peer) {
 		log.WithFields(log.Fields{
@@ -48,6 +56,20 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request accepted")
+		return nil, false
+	}
+
+	if aura.Nonce == noNonce {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring add user request accepted without nonce")
+		return nil, false
+	}
+	if len(aura.OfferUser) > maximumAddUserRecordSize {
+		log.WithFields(log.Fields{
+			"peer":            peer,
+			"offer_user_size": len(aura.OfferUser),
+		}).Warn("ignoring add user request accepted with oversized offer user record")
 		return nil, false
 	}
 
@@ -126,27 +148,25 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 			"error": err.Error(),
 		}).Fatal("cannot msgpack marshal requester user while handling add user request accepted")
 	}
-	requesterUserHash := blake3.Sum256(requesterBytes)
-
-	// Make sure the offer signature is valid
-	ok = b.network.VerifySignature(peer, requesterUserHash[:], aura.OfferSignature)
+	// Make sure the offer signature covers the full mutual addUser digest
+	signatureDigest := addUserSignatureDigest(aura.Nonce, aura.Timestamp, aura.OfferUser, requesterBytes, peer, b.network.Address())
+	ok = b.network.VerifySignature(peer, signatureDigest, aura.OfferSignature)
 	if !ok {
 		log.Warn("ignoring add user request accepted that contains invalid offer signature")
 		return nil, false
 	}
 
 	// Create and marshal the new add user
-	offerUserHash := blake3.Sum256(aura.OfferUser)
 	newUser := addUser{
-		Nonce:              newNonce(),
+		Nonce:              aura.Nonce,
 		Xor:                xor(requesterUser.ID, offerUser.ID),
-		Timestamp:          time.Now().Unix(),
+		Timestamp:          aura.Timestamp,
 		OfferUser:          aura.OfferUser,
 		RequesterUser:      requesterBytes,
 		OfferDevice:        peer,
 		RequesterDevice:    b.network.Address(),
 		OfferSignature:     aura.OfferSignature,
-		RequesterSignature: b.network.Sign(offerUserHash[:]),
+		RequesterSignature: b.network.Sign(signatureDigest),
 	}
 	newUser.ID = newUser.generateID()
 	newUserBytes, err := msgpack.Marshal(&newUser)

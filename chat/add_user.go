@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/binary"
 	"errors"
 	"sort"
 	"sync"
@@ -12,7 +13,28 @@ import (
 	"gorm.io/gorm"
 )
 
+const maximumAddUserRecordSize = 256 * 1024
+const addUserSignatureDomain = "bounce-add-user-signature:"
+
 var handleAddUsersMutex sync.Mutex
+
+// addUserSignatureDigest binds both user records, the nonce, timestamp, and both signing device addresses under a
+// domain tag so neither party can re-mint an addUser frame unilaterally.
+func addUserSignatureDigest(n nonce, timestamp int64, offerUser, requesterUser []byte, offerDevice, requesterDevice string) []byte {
+	hasher := blake3.New()
+	hasher.Write([]byte(addUserSignatureDomain))
+	hasher.Write(n[:])
+	hasher.Write(binary.BigEndian.AppendUint64(nil, uint64(timestamp)))
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(offerUser))))
+	hasher.Write(offerUser)
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(requesterUser))))
+	hasher.Write(requesterUser)
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(offerDevice))))
+	hasher.Write([]byte(offerDevice))
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(requesterDevice))))
+	hasher.Write([]byte(requesterDevice))
+	return hasher.Sum(nil)
+}
 
 // An addUser frame contains proof that two users became friends, where one of the users is us.  It is created as part
 // of the final step in adding a user over the wire.
@@ -106,6 +128,14 @@ func (au *addUser) getSavedAt() int64 {
 }
 
 func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	if len(payload) > maximumAddUserFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring add user larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	// An add user we built ourselves, on accepting a request, comes through here under our own address so that it is
 	// saved and applied the same way; it has no peer to ack, record delivery to or offer references to
 	fromPeer := peer != b.network.Address()
@@ -119,6 +149,15 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user")
+		return nil, false
+	}
+
+	if len(au.OfferUser) > maximumAddUserRecordSize || len(au.RequesterUser) > maximumAddUserRecordSize {
+		log.WithFields(log.Fields{
+			"peer":                peer,
+			"offer_user_size":     len(au.OfferUser),
+			"requester_user_size": len(au.RequesterUser),
+		}).Warn("rejecting add user with oversized user record")
 		return nil, false
 	}
 
@@ -165,16 +204,14 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}).Fatal("database error looking up add user")
 	}
 
-	// Ensure that all the signatures are correct
-	offerUserHash := blake3.Sum256(au.OfferUser)
-	ok := b.network.VerifySignature(au.RequesterDevice, offerUserHash[:], au.RequesterSignature)
+	// Ensure that both signatures cover the full mutual addUser digest
+	signatureDigest := addUserSignatureDigest(au.Nonce, au.Timestamp, au.OfferUser, au.RequesterUser, au.OfferDevice, au.RequesterDevice)
+	ok := b.network.VerifySignature(au.RequesterDevice, signatureDigest, au.RequesterSignature)
 	if !ok {
 		log.Warn("add user has invalid requester signature")
 		return nil, false
-
 	}
-	requesterUserHash := blake3.Sum256(au.RequesterUser)
-	ok = b.network.VerifySignature(au.OfferDevice, requesterUserHash[:], au.OfferSignature)
+	ok = b.network.VerifySignature(au.OfferDevice, signatureDigest, au.OfferSignature)
 	if !ok {
 		log.Warn("add user has invalid offer signature")
 		return nil, false
@@ -301,7 +338,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 
-	// Learn every sync device that we can verify
+	// Validate every sync device before checking peer authorization or persisting anything
 	syncDevices := devices(myUser.Devices)
 	sort.Sort(syncDevices)
 	validDevices := []device{}
@@ -329,32 +366,58 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 			}
 		}
 	}
-	for _, dev := range validDevices {
-		err = b.database.Create(&dev).Error
-		if err != nil {
+
+	// Only our own non-revoked devices or a device belonging to the counterparty (known or listed in the
+	// mutually signed record) may deliver this addUser.
+	fromOwnSyncDevice := false
+	if fromPeer {
+		peerAllowed := false
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if peerDev.UserID == b.currentUserID() {
+				peerAllowed = true
+				fromOwnSyncDevice = true
+			} else if peerDev.UserID == counterparty.ID {
+				peerAllowed = true
+			}
+		}
+		if !peerAllowed {
+			for _, dev := range counterparty.Devices {
+				if dev.Address == peer {
+					peerAllowed = true
+					break
+				}
+			}
+		}
+		if !peerAllowed {
+			for _, dev := range myUser.Devices {
+				if dev.Address == peer {
+					peerAllowed = true
+					fromOwnSyncDevice = true
+					break
+				}
+			}
+		}
+		if !peerAllowed {
 			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error saving sync device learned about via add user")
+				"peer":            peer,
+				"counterparty_id": counterparty.ID,
+			}).Warn("rejecting add user delivered by unauthorized peer")
+			return nil, false
 		}
-	}
-	b.applyCarriedDeviceRevocations(peer, myUser)
-	for _, dev := range validDevices {
-		var stored device
-		err = b.database.Select("revoked_at").Where("id = ?", dev.ID).First(&stored).Error
-		if err != nil || stored.RevokedAt != 0 {
-			continue
+
+		// Drop addUsers for blocked counterparties unless delivered by our own sync device (needed during
+		// initial sync of a new device so the historical user row exists before the block updateDM applies).
+		if !fromOwnSyncDevice && blockedUser(counterparty.ID) {
+			log.WithFields(log.Fields{
+				"id":              au.ID,
+				"peer":            peer,
+				"counterparty_id": counterparty.ID,
+			}).Warn("ignoring add user for blocked counterparty")
+			return nil, false
 		}
-		b.ui.DeviceAdded(Device{
-			ID:        dev.ID,
-			Name:      dev.Name,
-			Address:   dev.Address,
-			CreatedAt: dev.Timestamp,
-			Local:     false,
-			Online:    b.getRemoteDevice(dev.Address).connectedSockets() > 0,
-		})
 	}
 
-	// Make sure that none of the devices don't already belong to another user
+	// Make sure that none of the counterparty devices already belong to another user before writing anything
 	for _, dev := range counterparty.Devices {
 		// Addresses cannot collide
 		if existingDevice, exists := b.getDeviceFromAddress(dev.Address); exists {
@@ -384,6 +447,31 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 				"error": err.Error(),
 			}).Fatal("database error looking up device")
 		}
+	}
+
+	for _, dev := range validDevices {
+		err = b.database.Create(&dev).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error saving sync device learned about via add user")
+		}
+	}
+	b.applyCarriedDeviceRevocations(peer, myUser)
+	for _, dev := range validDevices {
+		var stored device
+		err = b.database.Select("revoked_at").Where("id = ?", dev.ID).First(&stored).Error
+		if err != nil || stored.RevokedAt != 0 {
+			continue
+		}
+		b.ui.DeviceAdded(Device{
+			ID:        dev.ID,
+			Name:      dev.Name,
+			Address:   dev.Address,
+			CreatedAt: dev.Timestamp,
+			Local:     false,
+			Online:    b.getRemoteDevice(dev.Address).connectedSockets() > 0,
+		})
 	}
 
 	// Check if we are already aware of this user
@@ -420,6 +508,31 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		return nil, false
 	}
 
+	// If we already have the counterparty and an add_users row for this pair, avoid storing duplicate rows.
+	// Any new valid devices/revocations above have already been applied; ack this frame so the peer stops
+	// re-offering it.
+	if !userIsNew {
+		var existingForPair addUser
+		err = b.database.Select("id").Where("xor = ?", au.Xor).First(&existingForPair).Error
+		if err == nil {
+			b.applyCarriedDeviceRevocations(peer, counterparty)
+			for _, dev := range counterparty.Devices {
+				if fromPeer {
+					go b.sendAck(peer, typeDevice, dev.ID)
+					b.markDeliveredTo(&dev, peer)
+				}
+			}
+			if fromPeer {
+				go b.sendAck(peer, typeAddUser, au.ID)
+			}
+			return nil, false
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up existing add user for pair")
+		}
+	}
+
 	// Save the addUser
 	err = b.database.Create(&au).Error
 	if err != nil {
@@ -434,6 +547,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		counterparty.IntroductionMethod = userIntroductionAddUser
 		counterparty.IntroductionTime = time.Now().Unix()
 		counterparty.Accepted = true
+		counterparty.Blocked = blockedUser(counterparty.ID)
 		err = b.database.Omit("Devices").Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{

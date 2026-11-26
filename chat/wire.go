@@ -26,15 +26,19 @@ var maximumPayloadFromUnknownDevice = 1024 * 1024
 
 // Small update and control frames never need the 256 MiB transport cap reserved for files and catch-ups.
 const maximumSmallControlFramePayload = 64 * 1024
+const maximumAddUserFramePayload = 1024 * 1024
 
 var maximumPayloadByFrameType = map[uint16]uint32{
-	typeUpdateUser:      maximumSmallControlFramePayload,
-	typeUpdateDevice:    maximumSmallControlFramePayload,
-	typeUpdateDM:        maximumSmallControlFramePayload,
-	typeUpdateSettings:  maximumSmallControlFramePayload,
-	typeReadReceipt:     maximumSmallControlFramePayload,
-	typeTypingIndicator: maximumSmallControlFramePayload,
-	typeConfirmation:    maximumSmallControlFramePayload,
+	typeUpdateUser:             maximumSmallControlFramePayload,
+	typeUpdateDevice:           maximumSmallControlFramePayload,
+	typeUpdateDM:               maximumSmallControlFramePayload,
+	typeUpdateSettings:         maximumSmallControlFramePayload,
+	typeReadReceipt:            maximumSmallControlFramePayload,
+	typeTypingIndicator:        maximumSmallControlFramePayload,
+	typeConfirmation:           maximumSmallControlFramePayload,
+	typeAddUser:                maximumAddUserFramePayload,
+	typeAddUserRequest:         maximumAddUserFramePayload,
+	typeAddUserRequestAccepted: maximumAddUserFramePayload,
 }
 
 var errUnknownDeviceFrameTooLarge = errors.New("refusing to read frame from unknown device that is too large")
