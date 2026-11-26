@@ -568,12 +568,10 @@ func TestAFramePushedByAHostIsRecordedAndPassedOn(t *testing.T) {
 	}
 }
 
-// An encrypted device's offer of a chunk is kept on the strength of the file alone.  A plain offer for the same chunk
-// would come from a device that holds the file, and an encrypted device is there for when none of those is online.
-func TestAnEncryptedChunkOfferIsKeptWithoutAPlainOfferForItsChunk(t *testing.T) {
-	me, alice, _, groupID := createUsersAndGroups(t)
-
-	// A file Alice sent to the group, with one chunk that no device has offered us
+// fileWithAnUnofferedChunk gives b a file that author sent to a group, with one chunk that no device has offered, and
+// returns the file and the hash its chunk has on an encrypted device
+func fileWithAnUnofferedChunk(t *testing.T, b *Bounce, author *Bounce, groupID ID) (*file, string) {
+	t.Helper()
 	plainHash := "1111111111111111111111111111111111111111111111111111111111111111"
 	encryptedHash := "2222222222222222222222222222222222222222222222222222222222222222"
 	f := &file{
@@ -587,44 +585,105 @@ func TestAnEncryptedChunkOfferIsKeptWithoutAPlainOfferForItsChunk(t *testing.T) 
 		EncryptedDeviceKey: make([]byte, 32),
 		Scope:              scopeGroup,
 		Destination:        groupID,
-		Author:             alice.currentUserID(),
+		Author:             author.currentUserID(),
 		Timestamp:          time.Now().Unix(),
 	}
 	f.ID = f.generateID()
-	f.Path = me.platform.ConfigDirectory + "/blobs/" + f.ID.String()
+	f.Path = b.platform.ConfigDirectory + "/blobs/" + f.ID.String()
 	f.LocalKey = newLocalKey()
 	var err error
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	assert.NoError(t, err)
-	signedFile := alice.createSignedContainer(typeFile, f.OriginalPayload)
+	signedFile := author.createSignedContainer(typeFile, f.OriginalPayload)
 	f.Signature = signedFile.Signature
 	f.Signer = signedFile.Signer
-	assert.NoError(t, me.database.Create(f).Error)
-	assert.NoError(t, me.database.Create(&chunk{ID: NewID(), FileID: f.ID, Hash: plainHash, EncryptedHash: encryptedHash}).Error)
-	assert.Equal(t, int64(0), countWhere(t, me, &chunkOffer{}, "hash = ?", plainHash))
+	assert.NoError(t, b.database.Create(f).Error)
+	assert.NoError(t, b.database.Create(&chunk{ID: NewID(), FileID: f.ID, Hash: plainHash, EncryptedHash: encryptedHash}).Error)
+	assert.Equal(t, int64(0), countWhere(t, b, &chunkOffer{}, "hash = ?", plainHash))
+	return f, encryptedHash
+}
 
-	// Alice's device passes on that her encrypted device holds the chunk
+// encryptedChunkOfferFrom builds the offer author's device passes on when author's encrypted device holds a chunk
+func encryptedChunkOfferFrom(t *testing.T, author *Bounce, encryptedHash string) *encryptedChunkOffer {
+	t.Helper()
 	eco := &encryptedChunkOffer{
 		ID:        NewID(),
 		Hash:      encryptedHash,
-		Location:  fakeEncryptedDeviceOf(t, alice.currentUserID()).Address(),
+		Location:  fakeEncryptedDeviceOf(t, author.currentUserID()).Address(),
 		Timestamp: time.Now().Unix(),
 	}
+	var err error
 	eco.OriginalPayload, err = msgpack.Marshal(eco)
 	assert.NoError(t, err)
-	sc := alice.createSignedContainer(typeEncryptedChunkOffer, eco.OriginalPayload)
+	sc := author.createSignedContainer(typeEncryptedChunkOffer, eco.OriginalPayload)
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
-	me.handleEncryptedChunkOffer(alice.network.Address(), eco.getPayload(), false)
+	return eco
+}
 
-	// It is kept, to be passed on to whoever may have the file, and acked so that it is not sent again
+// An encrypted device's offer of a chunk is kept on the strength of the file alone.  A plain offer for the same chunk
+// would come from a device that holds the file, and an encrypted device is there for when none of those is online.
+func TestAnEncryptedChunkOfferIsKeptWithoutAPlainOfferForItsChunk(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+
+	// A file Alice sent to the group, with one chunk that no device has offered us, and the news from Alice's device
+	// that her encrypted device holds the chunk
+	f, encryptedHash := fileWithAnUnofferedChunk(t, me, alice, groupID)
+	eco := encryptedChunkOfferFrom(t, alice, encryptedHash)
+	handled, firstTimeSeen := me.handleEncryptedChunkOffer(alice.network.Address(), eco.getPayload(), false)
+
+	// It is kept, and handed back to be acked and passed on to whoever may have the file
 	var kept encryptedChunkOffer
 	assert.NoError(t, me.database.Take(&kept, "id = ?", eco.ID).Error, "the offer was dropped for want of a plain offer")
 	assert.Equal(t, f.ID, kept.FileID)
 	assert.Equal(t, f.Author, kept.Author)
 	assert.Equal(t, f.Scope, kept.Scope)
 	assert.Equal(t, f.Destination, kept.Destination)
-	awaitAck(t, alice, me, typeEncryptedChunkOffer, eco.ID)
+	assert.True(t, handled != nil && handled.getID() == eco.ID)
+	assert.True(t, firstTimeSeen)
+}
+
+// An encrypted chunk offer is acked once each time it arrives, and whoever sent it is recorded as holding it from the
+// first time, so that it is not offered back to them
+func TestAnEncryptedChunkOfferIsAckedOnceAndItsSenderIsRecorded(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	_, encryptedHash := fileWithAnUnofferedChunk(t, me, alice, groupID)
+	eco := encryptedChunkOfferFrom(t, alice, encryptedHash)
+
+	// A device relays the offer to us
+	relay := newTestnet()
+	conn, err := relay.Dial(me.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	acksOfTheOffer := func() int {
+		acks := 0
+		conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+		for {
+			frameType, payload, err := readFrame(conn, true)
+			if err != nil {
+				return acks
+			}
+			if frameType != typeAck {
+				continue
+			}
+			var a ack
+			assert.NoError(t, msgpack.Unmarshal(payload, &a))
+			for _, reference := range a.References {
+				if reference.FrameID == eco.ID && reference.Type == typeEncryptedChunkOffer {
+					acks++
+				}
+			}
+		}
+	}
+
+	assert.NoError(t, writeFrame(conn, typeEncryptedChunkOffer, eco.getPayload()))
+	assert.Equal(t, 1, acksOfTheOffer())
+	assert.Equal(t, int64(1), countWhere(t, me, &encryptedChunkOffer{}, "id = ?", eco.ID))
+	assert.True(t, me.frameIsDeliveredTo(eco.ID, typeEncryptedChunkOffer, relay.Address()), "the device that sent the offer was not recorded as holding it")
+
+	// The same offer again is acked again, once
+	assert.NoError(t, writeFrame(conn, typeEncryptedChunkOffer, eco.getPayload()))
+	assert.Equal(t, 1, acksOfTheOffer(), "an offer we already hold was acked more than once")
 }
 
 // An encrypted device fetches the chunks a peer asked it to store one at a time: a storage request starts it, and

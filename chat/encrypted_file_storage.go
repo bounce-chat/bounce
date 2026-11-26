@@ -112,11 +112,19 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
 
+	// An offer that is returned is acked by whoever called this handler, who also records that the peer holds it, so
+	// it is not acked here as well
 	var existingECO encryptedChunkOffer
 	err = b.database.Take(&existingECO, "hash = ? AND location = ?", eco.Hash, eco.Location).Error
 	if err == nil {
+		if existingECO.ID == eco.ID {
+			return &existingECO, false
+		}
+
+		// A second offer of a chunk at a location we already know of tells us nothing new.  It is not kept, and it is
+		// acked by its own ID so that the peer stops sending it.
 		b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
-		return &existingECO, false
+		return nil, false
 	}
 
 	var c chunk
@@ -169,8 +177,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	}
 
 	b.addEncryptedChunkOfferToChunkEngine(&eco)
-	b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
-	return nil, false
+	return &eco, true
 }
 
 var encryptedChunkRequestMutex sync.Mutex
