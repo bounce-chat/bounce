@@ -139,10 +139,35 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		for _, fr := range cu.Frames {
 			b.handleEncryptedFrame(peer, fr.Payload, true)
 		}
+
+		// The copies in a catch up are named by IDs their sender chose, so there is no telling which of the
+		// references we asked this peer for they answer.  While the peer has more, everything is asked for again
+		// and the peer leaves out what we have acked since; once it has nothing more, what we asked for has been
+		// answered as far as it is going to be, and anything still missing will be in the peer's next offer.
 		if cu.Incomplete {
 			b.requestOutstandingReferencesFrom(peer)
+		} else {
+			b.forgetReferencesFrom(peer)
 		}
 		return nil, false
+	}
+
+	b.applyCatchUp(peer, cu, nil)
+	return nil, false
+}
+
+// applyCatchUp replays the frames of a catch up through their handlers and does everything that follows from them.
+// A catch up served by an encrypted device arrives sealed (see handleEncryptedCatchUp); once opened it is applied
+// here like any other, with hostCopies naming, by position, the ID the host knows each frame's copy by.  Those copy
+// IDs are what the host is acked with and what the reference engine tracks for it, so the IDs and types of the
+// frames inside are never sent back to the host.
+func (b *Bounce) applyCatchUp(peer string, cu catchUp, hostCopies []ID) {
+	fromHost := hostCopies != nil
+	reference := func(i int, fr frame) (ID, uint16) {
+		if fromHost {
+			return hostCopies[i], typeEncryptedFrame
+		}
+		return fr.ID, fr.Type
 	}
 
 	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
@@ -155,7 +180,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	// Do not allow catch ups from blocked users
 	if b.peerIsBlocked(peer) {
-		return nil, false
+		return
 	}
 
 	// Keep track of things that are impacted by this catch up
@@ -172,8 +197,9 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	dmsToDisplay := []*directMessage{}
 	rrsToDisplay := []*readReceipt{}
 
-	// Collect all the processed frames into a single ack
+	// Collect all the processed frames into a single ack.  A host is acked by the IDs of its copies instead.
 	a := &ack{}
+	hostAck := &ack{}
 
 	// Handle each frame in the catch up using its handler
 	handlers := b.getHandlers(b.encrypted)
@@ -184,12 +210,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		progressMod = int(frameCount / 1000)
 	}
 	for i, fr := range cu.Frames {
+		refusedID, refusedType := reference(i, fr)
 		if _, present := allowedCatchUpFrames[fr.Type]; !present {
 			log.WithFields(log.Fields{
 				"frame_type": fr.Type,
 				"peer":       peer,
 			}).Warn("ignoring frame in catch up with a type that is not allowed in catch ups")
-			b.refuseReference(peer, fr.ID, fr.Type)
+			b.refuseReference(peer, refusedID, refusedType)
 			continue
 		}
 
@@ -199,7 +226,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 				"peer": peer,
 				"type": fr.Type,
 			}).Warn("peer sent a catch up frame type that doesn't have a handler")
-			b.refuseReference(peer, fr.ID, fr.Type)
+			b.refuseReference(peer, refusedID, refusedType)
 			continue
 		}
 		br, firstTimeSeeing := handler(peer, fr.Payload, true)
@@ -208,11 +235,15 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 				"id":   fr.ID,
 				"type": fr.Type,
 			}).Debug("handler for frame in catch up did not return broadcastable")
-			b.refuseReference(peer, fr.ID, fr.Type)
+			b.refuseReference(peer, refusedID, refusedType)
 			continue
 		}
 		b.markDeliveredTo(br, peer)
 		a.References = append(a.References, frameReference{FrameID: br.getID(), Type: br.getType()})
+		if fromHost {
+			hostAck.References = append(hostAck.References, frameReference{FrameID: hostCopies[i], Type: typeEncryptedFrame})
+			b.recordHostDelivery(peer, hostCopies[i])
+		}
 		log.WithFields(log.Fields{
 			"id":   br.getID(),
 			"type": br.getType(),
@@ -291,12 +322,19 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	// Inform the reference engine of all the frames we handled
 	b.loadCatchUp(peer, a.References)
+	if fromHost {
+		b.loadCatchUp(peer, hostAck.References)
+	}
 
 	// Unlock the mutex for catchup handling
 	catchUpMutex.Unlock()
 
 	// Ack all of the handled frames
-	go b.sendDirect(peer, a)
+	if fromHost {
+		go b.sendDirect(peer, hostAck)
+	} else {
+		go b.sendDirect(peer, a)
+	}
 
 	for deviceID, _ := range devicesToUpdate {
 		b.updateDeviceState(deviceID)
@@ -390,7 +428,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			// have context on what this device is, and ask it for a fresh reference offer in case part
 			// of its initial offer was capped while it was still unknown.
 			referenceRequestMutex.Lock()
-			err = b.referenceDatabase.Table("frame_references").Where("peer = ?", peer).Update("known_peer", true).Error
+			err := b.referenceDatabase.Table("frame_references").Where("peer = ?", peer).Update("known_peer", true).Error
 			referenceRequestMutex.Unlock()
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -567,7 +605,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			log.WithFields(log.Fields{
 				"error": errUnknownReadReceiptTargetType.Error(),
 			}).Error("error parsing read receipt")
-			return nil, false
+			return
 		}
 		_, author, _, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString, rr.Actor)
 		if err != nil {
@@ -649,10 +687,10 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		b.ui.InitialSyncComplete()
 	}
 
-	// If this is an encrypted device (and we aren't), check if we manage it, and if so check if we need to re-key it
+	// If this is an encrypted device (and we aren't), check if we manage it, and if so check if we need to re-key it,
+	// and send any pending history clears it has not received yet.
 	if encrypted && !b.encrypted {
 		b.getManagementKeyHash(peer)
+		go b.sendEncryptedClearBefores(peer)
 	}
-
-	return nil, false
 }

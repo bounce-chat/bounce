@@ -559,9 +559,16 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	}
 
 	// Copy data from existing local chunks only for our own files (e.g., sync devices); another user's file
-	// must never inherit bytes from an unrelated local conversation.  Load any early offers for this file.
-	go func() {
+	// must never inherit bytes from an unrelated local conversation.  Load any early offers for this file.  A file
+	// can have a great many chunks, so this stops between two of them when the engine does.
+	b.background(func() {
 		for _, c := range f.Chunks {
+			select {
+			case <-b.done:
+				return
+			default:
+			}
+
 			var data []byte
 			err := errChunkDataNotFound
 			if f.Author == b.currentUserID() {
@@ -599,7 +606,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 				}
 			}
 		}
-	}()
+	})
 
 	return &f, true
 }
@@ -919,18 +926,8 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 	}
 
 	if b.encrypted {
-		peerUserKeyMutex.Lock()
-		peerKey, ok := peerUserKeys[peer]
-		peerUserKeyMutex.Unlock()
-		if !ok {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("cannot respond to chunk request from device with unknown user key")
-			return nil, false
-		}
-
 		// Make sure the chunk string is safe to pass to the filesystem call
-		allowed, _ := regexp.MatchString("^[a-zA-Z0-9]*$", cr.Hash)
+		allowed := encryptedChunkHashFormat.MatchString(cr.Hash)
 		if !allowed {
 			log.WithFields(log.Fields{
 				"chunk": cr.Hash,
@@ -949,7 +946,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 		allowed = false
 		for _, sr := range srs {
 			for _, r := range sr.RecipientUsers {
-				if bytes.Equal(r.PublicKey, peerKey) {
+				if b.peerCanReadLabel(peer, r.Label) {
 					allowed = true
 					break
 				}
@@ -1380,131 +1377,54 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 	return nil, false
 }
 
-func (b *Bounce) deleteOldestChunkDownloadedBefore(time int64) error {
-	// Find the oldest download that was completed before the timestamp
-	var oldestSR encryptedChunkStorageRequest
-	err := b.database.Distinct("hash").Where("downloaded = ? AND downloaded_at < ?", true, time).Order("downloaded_at asc").Limit(1).First(&oldestSR).Error
+// evictOldestChunk deletes every storage request for the oldest downloaded chunk matching the conditions.  The
+// rows' delete hook removes the blob and adjusts the storage counter once the last row for the hash is gone, so
+// nothing is removed or counted here.  Returns gorm.ErrRecordNotFound when no chunk matches.
+func (b *Bounce) evictOldestChunk(query string, args ...interface{}) error {
+	var oldest encryptedChunkStorageRequest
+	err := b.database.Distinct("hash").Where(query, args...).Order("downloaded_at asc").Limit(1).Take(&oldest).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Error("unable to find oldest storage request while freeing disk space")
 			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up encrypted chunk storage request")
 		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up encrypted chunk storage request")
 	}
-	oldestChunkPath := b.platform.ConfigDirectory + "/blobs/" + oldestSR.Hash
 
-	// Get the size of the file
-	fi, err := os.Stat(oldestChunkPath)
+	err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldest.Hash)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"path":  oldestChunkPath,
 			"error": err.Error(),
-		}).Error("unable to stat oldest chunk in blobs directory")
-
-		err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"id":    oldestSR.ID,
-			}).Error("error deleting encrypted chunk storage request for chunk that no longer exists on disk")
-		}
-		return nil
-	}
-	oldestChunkSize := fi.Size()
-
-	// Delete the file and associated records
-	err = os.Remove(oldestChunkPath)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  oldestChunkPath,
-			"error": err.Error(),
-		}).Error("error removing file")
+			"hash":  oldest.Hash,
+		}).Error("error deleting storage requests for the oldest downloaded chunk")
 		return err
 	}
-	err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"hash":  oldestSR.Hash,
-		}).Error("error deleting oldest downloaded encrypted chunk storage request")
-	}
-
-	// Update the disk usage
-	b.decrementEncryptedBlobStorageSize(oldestChunkSize)
-	log.WithFields(log.Fields{"oldestChunkPath": oldestChunkPath}).Debug("removed old chunk to free disk space")
-
+	log.WithFields(log.Fields{
+		"hash": oldest.Hash,
+	}).Debug("removed old chunk to free disk space")
 	return nil
 }
 
+// deleteOldestChunkDownloadedBefore frees the oldest chunk that finished downloading before the given time
+func (b *Bounce) deleteOldestChunkDownloadedBefore(before int64) error {
+	err := b.evictOldestChunk("downloaded = ? AND downloaded_at < ?", true, before)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Error("unable to find oldest storage request while freeing disk space")
+	}
+	return err
+}
+
+// deleteOldestChunk frees the oldest chunk, preferring ones the owner of this device did not ask to store
 func (b *Bounce) deleteOldestChunk() error {
-	// Find the oldest download, preferring chunks that the owner of this device did not request to store
-	var oldestSR encryptedChunkStorageRequest
-	err := b.database.Distinct("hash").Where("downloaded = ? AND owner_requested = ?", true, false).Order("downloaded_at asc").Limit(1).First(&oldestSR).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = b.database.Distinct("hash").Where("downloaded = ? AND owner_requested = ?", true, true).Order("downloaded_at asc").Limit(1).First(&oldestSR).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.Error("unable to find oldest storage request while freeing disk space")
-					return err
-				} else {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("database error looking up encrypted chunk storage request")
-				}
-			}
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up encrypted chunk storage request")
-		}
+	err := b.evictOldestChunk("downloaded = ? AND owner_requested = ?", true, false)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = b.evictOldestChunk("downloaded = ? AND owner_requested = ?", true, true)
 	}
-	oldestChunkPath := b.platform.ConfigDirectory + "/blobs/" + oldestSR.Hash
-
-	// Get the size of the file
-	fi, err := os.Stat(oldestChunkPath)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  oldestChunkPath,
-			"error": err.Error(),
-		}).Error("unable to stat oldest chunk in blobs directory")
-
-		err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"id":    oldestSR.ID,
-			}).Error("error deleting oldest downloaded encrypted chunk storage request")
-		}
-		return nil
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Error("unable to find oldest storage request while freeing disk space")
 	}
-	oldestChunkSize := fi.Size()
-
-	// Delete the file and associated records
-	err = os.Remove(oldestChunkPath)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  oldestChunkPath,
-			"error": err.Error(),
-		}).Error("error removing file")
-		return err
-	}
-	err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"hash":  oldestSR.Hash,
-		}).Error("error deleting oldest downloaded encrypted chunk storage request")
-	}
-
-	// Update the disk usage
-	b.decrementEncryptedBlobStorageSize(oldestChunkSize)
-	log.WithFields(log.Fields{"oldestChunkPath": oldestChunkPath}).Debug("removed old chunk to free disk space")
-
-	return nil
+	return err
 }
 
 func (b *Bounce) chunkStorageWasRequestedByDeviceOwner(hash string) bool {
@@ -1531,8 +1451,18 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
+	// A chunk we already hold, from another source or a resend, is not written or counted again; the new source's
+	// request is just marked downloaded below
+	var alreadyStored int64
+	err = b.database.Model(&encryptedChunkStorageRequest{}).Where("hash = ? AND downloaded = ?", hash, true).Count(&alreadyStored).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for a stored encrypted chunk")
+	}
+
 	// Remove the oldest chunks if we're running out of allocated storage space
-	if os.Getenv("UNLIMITED_STORAGE") != "true" {
+	if alreadyStored == 0 && os.Getenv("UNLIMITED_STORAGE") != "true" {
 		newData := int64(len(payload))
 
 		for b.getEncryptedBlobStorageSize()+newData > encryptedBlobStorageLimit {
@@ -1560,16 +1490,18 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	}
 
 	// Save it to disk
-	path := b.platform.ConfigDirectory + "/blobs/" + hash
-	err = ioutil.WriteFile(path, payload, 0600)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"path":  path,
-		}).Error("error writing encrypted chunk data")
-		return nil, false
+	if alreadyStored == 0 {
+		path := b.platform.ConfigDirectory + "/blobs/" + hash
+		err = ioutil.WriteFile(path, payload, 0600)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  path,
+			}).Error("error writing encrypted chunk data")
+			return nil, false
+		}
+		b.incrementEncryptedBlobStorageSize(int64(len(payload)))
 	}
-	b.incrementEncryptedBlobStorageSize(int64(len(payload)))
 
 	// Set all of the storage requests as downloaded
 	err = b.database.Table("encrypted_chunk_storage_requests").Where("hash = ?", hash).Updates(map[string]interface{}{
@@ -1612,23 +1544,18 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 			"error": err.Error(),
 		}).Fatal("database error looking up encrypted chunk storage requests")
 	}
-	keysToSendTo := map[string]bool{}
+	// Offer the chunk to every connected peer that asked for one of the mailboxes it was stored for
+	addressesToSendTo := map[string]bool{}
 	for _, sr := range srs {
 		for _, r := range sr.RecipientUsers {
-			keysToSendTo[string(r.PublicKey)] = true
-		}
-	}
-
-	addressesToSendTo := map[string]bool{}
-	for k, _ := range keysToSendTo {
-		key := []byte(k)
-		peerUserKeyMutex.Lock()
-		for address, peerKey := range peerUserKeys {
-			if bytes.Equal(key, peerKey) {
-				addressesToSendTo[address] = true
+			peerMailboxLabelsMutex.Lock()
+			for address, labels := range peerMailboxLabels {
+				if labels[string(r.Label)] {
+					addressesToSendTo[address] = true
+				}
 			}
+			peerMailboxLabelsMutex.Unlock()
 		}
-		peerUserKeyMutex.Unlock()
 	}
 	for address, _ := range addressesToSendTo {
 		rd := b.getRemoteDevice(address)
@@ -1637,7 +1564,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		}
 	}
 
-	go b.makeNextEncryptedChunkRequests()
+	b.wakeEncryptedChunkRequests()
 
 	return nil, false
 }
@@ -2427,66 +2354,66 @@ func (b *Bounce) offerChunk(c chunk) {
 	}
 	b.broadcast(co)
 
-	// Request that each encrypted device that could store this chunk does so
-	usersInScope := b.getUsersInScope(co)
-	recipients := [][]byte{}
-	for _, u := range usersInScope {
-		recipients = append(recipients, u.PublicECDHKey)
+	// A seeded file is served from where it sits on disk and has no encrypted form, so there is nothing for an
+	// encrypted device to store: files too large to embed are not relayed through encrypted devices
+	if c.EncryptedHash == "" {
+		return
 	}
-	deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(c.FileID)
-	sr := encryptedChunkStorageRequest{
-		ID:             NewID(),
-		Hash:           c.EncryptedHash,
-		Recipients:     recipients,
-		DeleteAt:       deleteAt,
-		BatchDeleteKey: batchDeleteKey,
-		CanBatchDelete: canBatchDelete,
-	}
-	for _, u := range usersInScope {
-		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				rd := b.getRemoteDevice(addr)
-				if rd.connectedSockets() > 0 {
-					b.sendDirect(addr, sr)
-				}
-			}
+
+	// Request that each encrypted device that could store this chunk does so, addressed to the mailboxes of the
+	// conversation the file belongs to that the device's owner can read
+	deleteAt, canBatchDelete := b.getDeleteAtAndCanBatchDelete(c.FileID)
+	for addr := range b.onlineEncryptedDevicesOf(b.getUsersInScope(co)) {
+		secrets, err := b.hostSecretsFor(co, addr)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"file_id": c.FileID,
+				"host":    addr,
+				"error":   err.Error(),
+			}).Warn("cannot derive mailboxes for chunk, not requesting encrypted storage")
+			continue
 		}
+		b.sendDirect(addr, encryptedChunkStorageRequest{
+			ID:             NewID(),
+			Hash:           c.EncryptedHash,
+			Labels:         currentLabels(secrets),
+			DeleteAt:       deleteAt,
+			CanBatchDelete: canBatchDelete,
+		})
 	}
 }
 
-func (b *Bounce) getDeleteAtAndBatchDeleteKey(fileID ID) (int64, ID, bool) {
+// getDeleteAtAndCanBatchDelete returns what a host is told about a chunk it stores besides its mailboxes: when to
+// delete it on its own, and whether it goes when the history of a mailbox it is in is cleared.  Message attachments
+// do; a profile or group image outlives any one conversation.  The host is not told which conversation: a clear
+// names mailboxes, and the chunk's labels already say which of those it is in.
+func (b *Bounce) getDeleteAtAndCanBatchDelete(fileID ID) (int64, bool) {
 	var f file
 	err := b.database.Take(&f, "id = ?", fileID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("cannot find file attempting to get delete at and batch delete key")
-		return 0, NilID, false
+		}).Error("cannot find file attempting to get delete at and whether it can be batch deleted")
+		return 0, false
+	}
+	if f.Type != fileTypeMessageAttachment {
+		return 0, false
 	}
 
 	deleteAt := int64(0)
-	if f.Type == fileTypeMessageAttachment {
-		var dm directMessage
-		err = b.database.Select("delete_at").Take(&dm, "id = ?", f.AttachedTo).Error
+	var dm directMessage
+	err = b.database.Select("delete_at").Take(&dm, "id = ?", f.AttachedTo).Error
+	if err == nil {
+		deleteAt = dm.DeleteAt
+	} else {
+		var gm groupMessage
+		err = b.database.Select("delete_at").Take(&gm, "id = ?", f.AttachedTo).Error
 		if err == nil {
-			deleteAt = dm.DeleteAt
-		} else {
-			var gm groupMessage
-			err = b.database.Select("delete_at").Take(&gm, "id = ?", f.AttachedTo).Error
-			if err == nil {
-				deleteAt = gm.DeleteAt
-			}
+			deleteAt = gm.DeleteAt
 		}
 	}
 
-	batchDeleteKey := NilID
-	canBatchDelete := false
-	if f.Type == fileTypeMessageAttachment {
-		batchDeleteKey = f.Destination
-		canBatchDelete = true
-	}
-
-	return deleteAt, batchDeleteKey, canBatchDelete
+	return deleteAt, true
 }
 
 type chunkUnavailable struct {

@@ -561,6 +561,10 @@ func blockedUser(userID ID) bool {
 }
 
 func (b *Bounce) peerOwner(address string) (ID, bool) {
+	if b.encrypted {
+		// An encrypted device holds no device or user records; it knows its peers only by the mailboxes they ask for
+		return NilID, false
+	}
 	if dev, ok := b.getDeviceFromAddress(address); ok {
 		return dev.UserID, true
 	}

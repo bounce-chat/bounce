@@ -34,6 +34,11 @@ type groupState struct {
 	removedBy                  *updateGroup
 	blockedBy                  *updateGroup
 	ug                         updateGroup
+
+	// The frames that have added a secret to the group's key chain, in order (see group_key.go), and whether the
+	// membership has shrunk since the last trusted rotation, meaning the next member to seal anything should rotate
+	keyEpochs []ID
+	keyStale  bool
 }
 
 func (b *Bounce) createInitialGroupState(groupID ID) (groupState, map[string]ID, map[string]int64, error) {
@@ -291,7 +296,33 @@ func (gs groupState) equals(otherState groupState) bool {
 		return false
 	}
 
+	if gs.keyStale != otherState.keyStale {
+		return false
+	}
+	if len(gs.keyEpochs) != len(otherState.keyEpochs) {
+		return false
+	}
+	for i := range gs.keyEpochs {
+		if gs.keyEpochs[i] != otherState.keyEpochs[i] {
+			return false
+		}
+	}
+
 	return true
+}
+
+// recordKeyChange notes the effect of an update on the group's key chain.  A trusted rotation is one carried by a
+// frame whose author remains in the group afterwards; a user leaving on their own, blocking the group, or rejecting
+// an invite shrinks the set of people who hold the chain without anyone trustworthy rotating it, so the chain
+// becomes stale until a remaining member rotates.
+func (gs groupState) recordKeyChange(ug updateGroup, departed ID) groupState {
+	if ug.carriesGroupKeySecret() && ug.Actor != departed {
+		gs.keyEpochs = append(append([]ID{}, gs.keyEpochs...), ug.ID)
+		gs.keyStale = false
+	} else {
+		gs.keyStale = true
+	}
+	return gs
 }
 
 func (gs groupState) isAdmin(userID ID) bool {
@@ -559,6 +590,9 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID ID) error {
 		} else {
 			return errMustBeInvitedToRespond
 		}
+	case updateGroupTypeRotateKey:
+		// Any member may add entropy to the chain, membership is checked above
+		return nil
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -607,12 +641,21 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup, myID ID) (groupState
 		return applyUpdateGroupRevokeInviteToState(gs, ug)
 	case updateGroupTypeRespondToInvite:
 		return applyUpdateGroupRespondToInviteToState(gs, ug)
+	case updateGroupTypeRotateKey:
+		return applyUpdateGroupRotateKeyToState(gs, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
 		}).Warn("cannot apply update group with unknown type")
 		return gs, errUpdateGroupWithUnknownType
 	}
+}
+
+func applyUpdateGroupRotateKeyToState(gs groupState, ug updateGroup) (groupState, error) {
+	if !ug.carriesGroupKeySecret() {
+		return gs, errInvalidPayloadLength
+	}
+	return gs.recordKeyChange(ug, NilID), nil
 }
 
 func applyUpdateGroupChangeNameToState(gs groupState, ug updateGroup) (groupState, error) {
@@ -708,7 +751,7 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 		gs.deletedBy = nil
 	}
 
-	return gs, nil
+	return gs.recordKeyChange(ug, userID), nil
 }
 
 func applyUpdateGroupChangeMutedUntilToState(gs groupState, ug updateGroup) (groupState, error) {
@@ -826,6 +869,9 @@ func applyUpdateGroupDeleteToState(gs groupState, ug updateGroup) (groupState, e
 }
 
 func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, error) {
+	// Anyone may block a group, but only someone who was in it or invited to it held its keys
+	heldTheChain := gs.isMember(ug.Actor) || gs.isInvited(ug.Actor)
+
 	if !gs.isBlocked(ug.Actor) {
 		gs.blockedUsers = append(gs.blockedUsers, ug.Actor)
 	}
@@ -855,6 +901,11 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 	gs.admins = adminsWithoutUser
 	gs.invites = invitesWithoutUser
 
+	// A user who blocks the group leaves it on their own, like one who removes themselves: they held the chain and
+	// cannot be trusted to rotate it for the others
+	if heldTheChain {
+		return gs.recordKeyChange(ug, ug.Actor), nil
+	}
 	return gs, nil
 }
 
@@ -900,7 +951,7 @@ func applyUpdateGroupRevokeInviteToState(gs groupState, ug updateGroup) (groupSt
 
 	gs.invites = invitesWithoutUser
 
-	return gs, nil
+	return gs.recordKeyChange(ug, userID), nil
 }
 
 func applyUpdateGroupRespondToInviteToState(gs groupState, ug updateGroup) (groupState, error) {
@@ -919,7 +970,9 @@ func applyUpdateGroupRespondToInviteToState(gs groupState, ug updateGroup) (grou
 
 	if accepted {
 		gs.users = append(gs.users, ug.Actor)
+		return gs, nil
 	}
 
-	return gs, nil
+	// An invitee who rejects held the chain, and cannot be trusted to rotate it for the others
+	return gs.recordKeyChange(ug, ug.Actor), nil
 }

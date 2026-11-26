@@ -631,16 +631,16 @@ func (b *Bounce) updateUserState(userID ID) {
 			}
 			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeSetEncryptedDeviceName:
-			addressLength := len(b.network.Address())
-			if len(uu.Data) < addressLength+1 {
+			// The address ends at the first colon, which is how validPayload reads it, and not at the length our own
+			// network's addresses happen to have
+			address, name, found := strings.Cut(string(uu.Data), ":")
+			if !found {
 				log.WithFields(log.Fields{
 					"length": len(uu.Data),
-				}).Warn("update user data length too short to update encrypted device name")
+				}).Warn("update user data names no encrypted device to rename")
 				continue
 			}
-			address := string(uu.Data[:addressLength])
-			name := string(uu.Data[addressLength+1:])
-			encryptedDeviceNames[address] = string(name)
+			encryptedDeviceNames[address] = name
 		case updateUserTypeReplaceKeys:
 			var ks keySet
 			err = msgpack.Unmarshal(uu.Data, &ks)
@@ -942,6 +942,35 @@ func (b *Bounce) rollKeys() error {
 		return err
 	}
 
+	// Apply and broadcast the new keys locally first so our own user record already holds the new ECDH key before
+	// we ask online encrypted devices to rotate (and re-challenge us under the new key).
+	err = b.applyAndBroadcastUpdateUser(updateUser{
+		Nonce:     newNonce(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeReplaceKeys,
+		Data:      keySetData,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to apply and broadcast new key set")
+		return err
+	}
+	err = b.applyAndBroadcastUpdateUser(updateUser{
+		Nonce:     newNonce(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeReplaceECDHPublicKey,
+		Data:      publicECDHKey.Bytes(),
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to apply and broadcast new ECDH key")
+		return err
+	}
+
 	// Update any encrypted devices that are currently online
 	var allESDs []encryptedSyncDevice
 	err = b.database.Find(&allESDs).Error
@@ -986,34 +1015,6 @@ func (b *Bounce) rollKeys() error {
 
 			b.sendDirect(esd.Address, &med)
 		}
-	}
-
-	// Inform sync devices about new keys, and all other users about public ECDH key
-	err = b.applyAndBroadcastUpdateUser(updateUser{
-		Nonce:     newNonce(),
-		Target:    b.currentUserID(),
-		Timestamp: time.Now().Unix(),
-		Type:      updateUserTypeReplaceKeys,
-		Data:      keySetData,
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("failed to apply and broadcast new key set")
-		return err
-	}
-	err = b.applyAndBroadcastUpdateUser(updateUser{
-		Nonce:     newNonce(),
-		Target:    b.currentUserID(),
-		Timestamp: time.Now().Unix(),
-		Type:      updateUserTypeReplaceECDHPublicKey,
-		Data:      publicECDHKey.Bytes(),
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("failed to apply and broadcast new ECDH key")
-		return err
 	}
 
 	return nil

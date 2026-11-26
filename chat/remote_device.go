@@ -290,6 +290,15 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 			b.insertRemoteDeviceIntoPool(peer, poolTypeUser, owner)
 		}
 
+		// If this is an encrypted device, tell it which mailboxes we can read, which it answers with what it holds
+		// for us
+		encryptedDeviceCacheMutex.Lock()
+		_, encryptedPeer := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+		if encryptedPeer {
+			go b.sendMailboxRequest(peer)
+		}
+
 		// Do a reference flow
 		b.sendReferences(peer)
 	} else {

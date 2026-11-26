@@ -29,6 +29,7 @@ const updateGroupTypeSetTypingIndicatorSettings = uint16(14)
 const updateGroupTypeSetImage = uint16(15)
 const updateGroupTypeRevokeInvite = uint16(16)
 const updateGroupTypeRespondToInvite = uint16(17)
+const updateGroupTypeRotateKey = uint16(18)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -80,28 +81,39 @@ type updateGroup struct {
 	Data          []byte
 	CustomScope   ID `msgpack:"-"`
 	Confirmations []confirmation
-	Applied       bool `msgpack:"-"`
-	Notified      bool `msgpack:"-"`
-	Seen          bool `msgpack:"-"`
+
+	// Group key material, see group_key.go.  Updates that shrink the membership, and explicit key rotations, carry a
+	// fresh secret wrapped for every remaining member; invites carry the chain so far wrapped for the invitee.
+	KeyEphemeralKey []byte
+	KeyWraps        []groupKeyWrap `gorm:"serializer:json"`
+	KeySecretHash   []byte
+	Applied         bool `msgpack:"-"`
+	Notified        bool `msgpack:"-"`
+	Seen            bool `msgpack:"-"`
 }
 
 func (ug *updateGroup) getNonce() nonce {
 	return ug.Nonce
 }
 
+// The key material is part of the content: the ID is what members confirm, so it has to name one set of wraps and
+// one commitment to the secret, or an author could hand different members different ones under the same update.
 func (ug *updateGroup) generateID() ID {
-	return newContentHasher(typeUpdateGroup, ug.Nonce).
+	hasher := newContentHasher(typeUpdateGroup, ug.Nonce).
 		id(ug.Actor).
 		id(ug.Target).
 		int64(ug.Timestamp).
 		uint16(ug.Type).
-		bytes(ug.Data).
-		generate()
+		bytes(ug.Data)
+	return hashGroupKeyMaterial(hasher, ug.KeyEphemeralKey, ug.KeyWraps, ug.KeySecretHash).generate()
 }
 
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(ug) {
 		return errors.New("update group ID is not generated from its content")
+	}
+	if err := validGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, ug.KeySecretHash); err != nil {
+		return err
 	}
 	ug.SavedAt = time.Now().Unix()
 
@@ -240,6 +252,24 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		return false
 	}
 
+	// Key material is stored as it arrives, so its shape and size are checked here, and only the updates that have
+	// a use for it may carry any: an invite carries the chain, and a removal, a revoked invite or a rotation carries
+	// a secret
+	if validGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, ug.KeySecretHash) != nil {
+		return false
+	}
+	switch ug.Type {
+	case updateGroupTypeInviteUser:
+		if len(ug.KeySecretHash) != 0 {
+			return false
+		}
+	case updateGroupTypeRemoveUser, updateGroupTypeRevokeInvite, updateGroupTypeRotateKey:
+	default:
+		if !ug.carriesNoGroupKeyMaterial() {
+			return false
+		}
+	}
+
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		return validGroupName(string(ug.Data))
@@ -314,6 +344,8 @@ func (ug *updateGroup) validPayloadFormat() bool {
 			return false
 		}
 		return true
+	case updateGroupTypeRotateKey:
+		return len(ug.Data) == 0 && ug.carriesGroupKeySecret()
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -456,6 +488,11 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	if err != nil {
 		// We are getting an update that isn't a part of a valid consensus stack.  This is probably an invite for
 		// us to join a group that we aren't aware of it yet, but either way it's ok to save and move on here.
+		// If a known device invited us before we have the group creation, bootstrap our group keys from the invite
+		// so encrypted devices can immediately serve us the group creation and history.
+		if signerKnown && !b.haveGroupCreation(ug.Target) {
+			b.bootstrapGroupKeysFromInvite(ug)
+		}
 		return nil, false
 	}
 
@@ -707,7 +744,7 @@ func (b *Bounce) InviteUserToGroup(groupID, userID ID) error {
 		}
 	}
 
-	// Create an update group that adds this user
+	// Create an update group that adds this user, carrying the group's keys for them
 	b.attachDeviceRevocations(&newUser)
 	newUserBytes, err := msgpack.Marshal(newUser)
 	if err != nil {
@@ -716,13 +753,18 @@ func (b *Bounce) InviteUserToGroup(groupID, userID ID) error {
 			"error":   err.Error(),
 		}).Fatal("error marshalling user while adding user to group")
 	}
-	err = b.applyAndBroadcastUpdateGroup(&updateGroup{
+	invite := &updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeInviteUser,
 		Data:      newUserBytes,
-	})
+	}
+	err = b.attachGroupKeyChain(invite, newUser)
+	if err != nil {
+		return err
+	}
+	err = b.applyAndBroadcastUpdateGroup(invite)
 	if err != nil {
 		return err
 	}
@@ -747,6 +789,20 @@ func (b *Bounce) RemoveUserFromGroup(groupID, userID ID) error {
 		Type:      updateGroupTypeRemoveUser,
 		Data:      userID[:],
 	}
+
+	// Rotate the group key for everyone who remains.  When we are the one leaving, the others cannot trust a
+	// rotation from us, so we leave it to them (see ensureGroupKeyFresh).
+	if userID != b.currentUserID() {
+		gs, err := b.currentGroupState(groupID)
+		if err != nil {
+			return err
+		}
+		err = b.attachGroupKeySecret(ug, gs, userID)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := b.applyAndBroadcastUpdateGroup(ug)
 	if err != nil {
 		return err
@@ -933,7 +989,18 @@ func (b *Bounce) RevokeInvite(groupID, userID ID) error {
 		Type:      updateGroupTypeRevokeInvite,
 		Data:      userID[:],
 	}
-	err := b.applyAndBroadcastUpdateGroup(ug)
+
+	// The invitee held the group's keys, so rotate for everyone who remains
+	gs, err := b.currentGroupState(groupID)
+	if err != nil {
+		return err
+	}
+	err = b.attachGroupKeySecret(ug, gs, userID)
+	if err != nil {
+		return err
+	}
+
+	err = b.applyAndBroadcastUpdateGroup(ug)
 	if err != nil {
 		return err
 	}
@@ -1124,6 +1191,8 @@ func (b *Bounce) informUIOfUpdateGroup(ug updateGroup) {
 		b.informUIUpdateGroupRevokeInvite(ug)
 	case updateGroupTypeRespondToInvite:
 		b.informUIUpdateGroupRespondToInvite(ug)
+	case updateGroupTypeRotateKey:
+		return
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,

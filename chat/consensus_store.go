@@ -166,10 +166,14 @@ func (b *Bounce) writeGroupConsensus(groupID ID) error {
 	// Apply the group state to the database and UI, marking updates in the database as applied or not where needed
 	followUp := consensusWriteFollowUp{}
 	err = b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs, &followUp)
-	b.consensusStore.Unlock()
 	if err != nil {
+		b.consensusStore.Unlock()
 		return err
 	}
+
+	// Derive the group's keys from the canonical history, which the lock keeps still while they are read from it
+	b.updateGroupKeys(groupID, stack)
+	b.consensusStore.Unlock()
 
 	// Apply carried device revocations outside the consensus lock (updateDeviceState can reload consensus) and
 	// before requesting connections so newly learned revoked devices are never dialed.
@@ -935,9 +939,6 @@ func (b *Bounce) writeGroupStateToDatabase(initialGroup group, allUsers []user, 
 	for _, invitedID := range gs.invites {
 		if !b.isInvited(g.ID, invitedID) {
 			b.addGroupInvite(g.ID, invitedID)
-
-			// Add this user as a recipient for the group creation and updates for any encrypted devices
-			go b.addInvitedUserAsEncryptedRecipient(invitedID, g.ID)
 		}
 
 		var u user
@@ -1570,26 +1571,6 @@ func (b *Bounce) cleanupRolledBackInvite(groupID ID) {
 			"group_id": groupID,
 		}).Fatal("database error looking up group")
 	}
-}
-
-func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID ID) {
-	for _, address := range b.encryptedDevicesInGroup(groupID) {
-		err := b.database.Create(&appendRecipient{
-			ID:        NewID(),
-			GroupID:   groupID,
-			UserID:    userID,
-			Timestamp: time.Now().Unix(),
-			Address:   address,
-		}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving new appendRecipient")
-			return
-		}
-	}
-
-	b.addRecipientsIfNeeded()
 }
 
 func (b *Bounce) onlineEncryptedDevicesInGroup(groupID ID) []string {

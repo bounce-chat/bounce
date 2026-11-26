@@ -55,9 +55,6 @@ var typeManageEncryptedDevice = uint16(36)
 var typeEncryptedDeviceManagementActionResponse = uint16(37)
 var typeGetManagementKeyHash = uint16(38)
 var typeManagementKeyHashResponse = uint16(39)
-var typeAppendRecipientRequest = uint16(40)
-var typeAppendRecipientResponse = uint16(41)
-var typeAppendRecipientPayloads = uint16(42)
 var typeDraft = uint16(43)
 var typeEncryptedReceive = uint16(44)
 var typeEncryptedChunkOffer = uint16(45)
@@ -67,6 +64,9 @@ var typeEncryptedChunkStorageRequest = uint16(48)
 var typeRequestECRO = uint16(49)
 var typeEncryptedClearBefore = uint16(50)
 var typeChunkUnavailable = uint16(51)
+var typeGroupKeyRequest = uint16(52)
+var typeGroupKeyResponse = uint16(53)
+var typeMailboxRequest = uint16(54)
 
 type sendable interface {
 	getType() uint16
@@ -104,13 +104,6 @@ func (scua sortableCatchUpAbles) Less(i, j int) bool {
 	if scua[i].getSavedAt() == scua[j].getSavedAt() {
 		iType := scua[i].getType()
 		jType := scua[j].getType()
-
-		if iType == typeEncryptedFrame {
-			iType = scua[i].(*encryptedFrame).Type
-		}
-		if jType == typeEncryptedFrame {
-			jType = scua[j].(*encryptedFrame).Type
-		}
 
 		iOrder, ok := catchUpOrder[iType]
 		if !ok {
@@ -152,8 +145,8 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeEncryptedReferenceOfferResponse:  b.handleEncryptedReferenceOfferResponse,
 			typeManageEncryptedDevice:            b.handleManageEncryptedDevice,
 			typeGetManagementKeyHash:             b.handleGetManagementKeyHash,
-			typeAppendRecipientRequest:           b.handleAppendRecipientRequest,
-			typeAppendRecipientPayloads:          b.handleAppendRecipientPayloads,
+			typeMailboxRequest:                   b.handleMailboxRequest,
+			typeRequestReferenceOffer:            b.handleRequestReferenceOffer,
 			typeEncryptedStorageReferenceRequest: b.handleEncryptedStorageReferenceRequest,
 			typeChunkRequest:                     b.handleChunkRequest,
 			typeChunk:                            b.handleEncryptedChunk,
@@ -200,12 +193,13 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 		typeEncryptedReferenceOfferChallenge:  b.handleEncryptedReferenceOfferChallenge,
 		typeEncryptedDeviceManagementActionResponse: b.handleEncryptedDeviceManagementActionResponse,
 		typeManagementKeyHashResponse:               b.handleManagementKeyHashResponse,
-		typeAppendRecipientResponse:                 b.handleAppendRecipientResponse,
 		typeDraft:                                   b.handleDraft,
 		typeEncryptedChunkOffer:                     b.handleEncryptedChunkOffer,
 		typeEncryptedStorageReferenceOffer:          b.handleEncryptedStorageReferenceOffer,
 		typeChunkUnavailable:                        b.handleChunkUnavailable,
 		typeRequestReferenceOffer:                   b.handleRequestReferenceOffer,
+		typeGroupKeyRequest:                         b.handleGroupKeyRequest,
+		typeGroupKeyResponse:                        b.handleGroupKeyResponse,
 	}
 }
 

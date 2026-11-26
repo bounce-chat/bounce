@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -113,22 +112,33 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
 
+	// An offer that is returned is acked by whoever called this handler, who also records that the peer holds it, so
+	// it is not acked here as well
 	var existingECO encryptedChunkOffer
 	err = b.database.Take(&existingECO, "hash = ? AND location = ?", eco.Hash, eco.Location).Error
 	if err == nil {
-		b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
-		return &existingECO, false
+		if existingECO.ID == eco.ID {
+			return &existingECO, false
+		}
+
+		// A second offer of a chunk at a location we already know of tells us nothing new.  It is not kept, and it is
+		// acked by its own ID so that the peer stops sending it.
+		go b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
+		return nil, false
 	}
 
 	var c chunk
 	err = b.database.Take(&c, "encrypted_hash = ?", eco.Hash).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// An encrypted device offers its chunks as soon as we connect, ahead of the catch up that brings the
+			// file they belong to, so this is the usual order and not a fault.  The offer names no file, so there
+			// is nothing to keep it under yet.  It is not acked either: an ack is what stops it being offered, and
+			// it has to be offered again once the file is here.
 			log.WithFields(log.Fields{
 				"hash": eco.Hash,
 				"peer": peer,
-			}).Error("received encrypted chunk offer for unknown chunk")
-			b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
+			}).Debug("received encrypted chunk offer before the file its chunk belongs to")
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
@@ -137,26 +147,30 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 		}
 	}
 
-	var unencryptedCO chunkOffer
-	err = b.database.Take(&unencryptedCO, "hash = ?", c.Hash).Error
+	// Who this offer may be passed on to is decided by the file the chunk belongs to.  It is not taken from a plain
+	// offer for the same chunk: those come from devices that hold the file, and an encrypted device is there for
+	// when they are all offline.
+	var f file
+	err = b.database.Select("id", "author", "scope", "destination").Take(&f, "id = ?", c.FileID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"hash": eco.Hash,
 				"peer": peer,
-			}).Warn("received encrypted chunk offer for chunk with no unencrypted offers")
+			}).Error("received encrypted chunk offer for chunk with no file")
+			go b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("database error looking up chunk offer")
+			}).Fatal("database error looking up file for encrypted chunk offer")
 		}
 	}
 
-	eco.Author = unencryptedCO.Author
-	eco.FileID = unencryptedCO.FileID
-	eco.Scope = unencryptedCO.Scope
-	eco.Destination = unencryptedCO.Destination
+	eco.Author = f.Author
+	eco.FileID = f.ID
+	eco.Scope = f.Scope
+	eco.Destination = f.Destination
 
 	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&eco).Error
 	if err != nil {
@@ -166,12 +180,40 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	}
 
 	b.addEncryptedChunkOfferToChunkEngine(&eco)
-	b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
-	return nil, false
+	return &eco, true
 }
 
 var encryptedChunkRequestMutex sync.Mutex
 
+// wakeEncryptedChunkRequests has keepEncryptedChunksRequested look for chunks to ask for now, not at its next tick.
+// It never blocks: one wake is remembered, which is enough for any number that arrive while a pass is running.
+func (b *Bounce) wakeEncryptedChunkRequests() {
+	select {
+	case b.encryptedChunkRequestWake <- struct{}{}:
+	default:
+	}
+}
+
+// keepEncryptedChunksRequested is the one goroutine on an encrypted device that asks peers for the chunks they want
+// stored.  It is woken when a storage request or a chunk arrives, and ticks so that a request that went unanswered,
+// or that waited behind another to the same peer, is made without anything else having to arrive first.
+func (b *Bounce) keepEncryptedChunksRequested() {
+	ticker := time.NewTicker((expectedChunkDeliverySeconds + 1) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-b.encryptedChunkRequestWake:
+		case <-ticker.C:
+		}
+		b.makeNextEncryptedChunkRequests()
+	}
+}
+
+// makeNextEncryptedChunkRequests asks each connected peer for one of the chunks it wants stored, unless a request to
+// that peer is still within the time a chunk is expected to take
 func (b *Bounce) makeNextEncryptedChunkRequests() {
 	encryptedChunkRequestMutex.Lock()
 	defer encryptedChunkRequestMutex.Unlock()
@@ -188,12 +230,10 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 		return
 	}
 
-	recheck := false
 	neededChunks := map[string][]string{}
 	alreadyHitPeer := map[string]bool{}
 	for _, sr := range srs {
 		if sr.LastAttemptedAt > time.Now().Unix()-expectedChunkDeliverySeconds {
-			recheck = true
 			alreadyHitPeer[sr.Source] = true
 		} else {
 			neededChunks[sr.Hash] = append(neededChunks[sr.Hash], sr.Source)
@@ -201,9 +241,8 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 	}
 
 	for hash, sources := range neededChunks {
-		for i, s := range sources {
+		for _, s := range sources {
 			if _, alreadyHit := alreadyHitPeer[s]; alreadyHit {
-				recheck = true
 				continue
 			}
 
@@ -217,20 +256,9 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 				if err != nil {
 					log.Error("error updating last attempt field for encrypted chunk storage request")
 				}
-
-				if len(sources) > i+1 {
-					recheck = true
-				}
 				break
 			}
 		}
-	}
-
-	if recheck {
-		go func() {
-			time.Sleep((expectedChunkDeliverySeconds + 1) * time.Second)
-			b.makeNextEncryptedChunkRequests()
-		}()
 	}
 }
 
@@ -255,20 +283,19 @@ func (esro encryptedStorageReferenceOffer) getPayload() []byte {
 func (b *Bounce) sendEncryptedStorageReferenceOffer(address string) encryptedStorageReferenceOffer {
 	esro := encryptedStorageReferenceOffer{}
 
-	peerUserKeyMutex.Lock()
-	peerKey, ok := peerUserKeys[address]
-	peerUserKeyMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": address,
-		}).Error("unable to send encrypted storage reference to peer without known key")
+	labels := b.peerLabels(address)
+	if len(labels) == 0 {
 		return esro
+	}
+	labelList := make([][]byte, 0, len(labels))
+	for label := range labels {
+		labelList = append(labelList, []byte(label))
 	}
 
 	var ecos []encryptedChunkOffer
 	err := b.database.Distinct("encrypted_chunk_offers.id").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeEncryptedChunkOffer).
-		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.hash == encrypted_chunk_offers.hash AND encrypted_chunk_recipients.public_key == ?", peerKey).
+		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.hash == encrypted_chunk_offers.hash AND encrypted_chunk_recipients.label IN ?", labelList).
 		Where("delivery_records.id IS NULL AND encrypted_chunk_recipients.id IS NOT NULL").
 		Find(&ecos).
 		Error
@@ -322,7 +349,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 			log.WithFields(log.Fields{
 				"address": peer,
 			}).Warn("could not determine owner of encrypted device that sent encrypted storage reference offer")
-			b.sendDirect(peer, esrr)
+			go b.sendDirect(peer, esrr)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
@@ -345,25 +372,50 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		}
 
 		if len(f.EncryptedHashList) > 0 {
-			deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(fileID)
+			secrets, err := b.threadSecretsFor(&f)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"file_id": f.ID,
+					"error":   err.Error(),
+				}).Warn("cannot derive mailboxes for file, not requesting encrypted storage")
+				continue
+			}
+			labels := currentLabels(b.secretsForOwner(secrets, ownerUser.ID))
+			if len(labels) == 0 {
+				continue
+			}
+
+			var downloadedHashes []string
+			err = b.database.Model(&chunk{}).
+				Where("file_id = ? AND downloaded = ? AND length(encrypted_hash) > 0", f.ID, true).
+				Pluck("encrypted_hash", &downloadedHashes).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"file_id": f.ID,
+					"error":   err.Error(),
+				}).Fatal("database error looking up downloaded chunks for encrypted storage")
+			}
+			downloaded := map[string]bool{}
+			for _, h := range downloadedHashes {
+				downloaded[h] = true
+			}
+
+			deleteAt, canBatchDelete := b.getDeleteAtAndCanBatchDelete(fileID)
 			for _, hash := range strings.Split(f.EncryptedHashList, ",") {
-				// Request that this encrypted devices store the chunks it does not have
+				if !downloaded[hash] {
+					continue
+				}
+				// Request that this encrypted device store the chunks it does not have
 				var existingECO encryptedChunkOffer
 				err = b.database.Where("location = ? AND hash = ?", peer, hash).Take(&existingECO).Error
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					usersToInclude := b.getUsersInScope(&f)
-					userKeys := [][]byte{}
-					for i, _ := range usersToInclude {
-						userKeys = append(userKeys, usersToInclude[i].PublicECDHKey)
-					}
 					esrr.StorageRequests = append(
 						esrr.StorageRequests,
 						encryptedChunkStorageRequest{
 							ID:             NewID(),
 							Hash:           hash,
-							Recipients:     userKeys,
+							Labels:         labels,
 							DeleteAt:       deleteAt,
-							BatchDeleteKey: batchDeleteKey,
 							CanBatchDelete: canBatchDelete,
 						},
 					)
@@ -376,7 +428,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		}
 	}
 
-	b.sendDirect(peer, esrr)
+	go b.sendDirect(peer, esrr)
 
 	return nil, false
 }
@@ -416,7 +468,8 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"encrypted_chunk_offer_id": ecoRequest,
-				}).Error("device requested encrypted chunk offer that could not be found")
+				}).Warn("device requested encrypted chunk offer that could not be found")
+				continue
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -424,42 +477,41 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			}
 		}
 
-		b.sendDirect(peer, &eco)
-	}
-
-	for _, sr := range esrr.StorageRequests {
-		for _, key := range sr.Recipients {
-			sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-				ID:        NewID(),
-				Hash:      sr.Hash,
-				PublicKey: key,
-			})
-		}
-		sr.Source = peer
-
-		var existingSR encryptedChunkStorageRequest
-		err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
-		if err == nil {
-			continue
-		}
-
-		var alreadyDownloadedSR encryptedChunkStorageRequest
-		err = b.database.Where("hash = ? AND downloaded = ?", sr.Hash, true).Take(&alreadyDownloadedSR).Error
-		if err == nil {
-			sr.Downloaded = true
-			sr.DownloadedAt = time.Now().Unix()
-		}
-
-		err = b.database.Create(&sr).Error
+		// Only serve chunk offers for chunks addressed to a mailbox the peer has asked for
+		var recipients []encryptedChunkRecipient
+		err = b.database.Where("hash = ?", eco.Hash).Find(&recipients).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("database error saving encrypted chunk storage request")
+			}).Fatal("database error looking up encrypted chunk recipients")
+		}
+		allowed := false
+		for _, r := range recipients {
+			if b.peerCanReadLabel(peer, r.Label) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			log.WithFields(log.Fields{
+				"peer": peer,
+				"id":   eco.ID,
+			}).Warn("peer requested encrypted chunk offer for a mailbox it did not ask for")
+			continue
+		}
+
+		go b.sendDirect(peer, &eco)
+	}
+
+	stored := false
+	for _, sr := range esrr.StorageRequests {
+		if b.storeEncryptedChunkStorageRequest(sr, peer) {
+			stored = true
 		}
 	}
 
-	if len(esrr.StorageRequests) > 0 {
-		b.makeNextEncryptedChunkRequests()
+	if stored {
+		b.wakeEncryptedChunkRequests()
 	}
 
 	return nil, false
@@ -469,9 +521,8 @@ type encryptedChunkStorageRequest struct {
 	ID              ID `gorm:"primary_key;"`
 	Hash            string
 	DeleteAt        int64
-	BatchDeleteKey  ID
 	CanBatchDelete  bool
-	Recipients      [][]byte                  `gorm:"-"`
+	Labels          [][]byte                  `gorm:"-"` // The mailboxes (see mailbox.go) whose readers may fetch this chunk
 	Timestamp       int64                     `msgpack:"-"`
 	RecipientUsers  []encryptedChunkRecipient `msgpack:"-"`
 	Source          string                    `msgpack:"-"`
@@ -487,22 +538,40 @@ func (ecsr *encryptedChunkStorageRequest) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// A chunk's blob is shared by every storage request for its hash, one per source and message, so it is removed only
+// with the last of them, and the storage counter is adjusted here, in the one place every delete path passes.  The
+// host database is single connection, so this must use the transaction it is given and never b.database.
 func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
-	if ecsr.FullPath != "" {
-		err := os.Remove(ecsr.FullPath)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"path":  ecsr.FullPath,
-			}).Warn("failed to remove encrypted chunk from disk")
-		}
+	if ecsr.ID == NilID {
+		return nil
 	}
 
-	err := tx.Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
+	var remaining int64
+	err := tx.Model(&encryptedChunkStorageRequest{}).Where("hash = ? AND id != ?", ecsr.Hash, ecsr.ID).Count(&remaining).Error
 	if err != nil {
 		return err
 	}
-	return tx.Where("frame_id = ? AND frame_type = ?", ecsr.ID, typeEncryptedChunkStorageRequest).Delete(&deliveryRecord{}).Error
+	if remaining == 0 {
+		if ecsr.FullPath != "" {
+			releaseEncryptedBlob(ecsr.FullPath)
+		}
+		var offerIDs []ID
+		if err := tx.Model(&encryptedChunkOffer{}).Where("hash = ?", ecsr.Hash).Pluck("id", &offerIDs).Error; err != nil {
+			return err
+		}
+		if len(offerIDs) > 0 {
+			if err := tx.Where("frame_id IN ? AND frame_type = ?", offerIDs, typeEncryptedChunkOffer).Delete(&deliveryRecord{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", offerIDs).Delete(&encryptedChunkOffer{}).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	// A storage request has no delivery records to go with it.  It is kept under an ID this device gave it and is
+	// never acked: a device that wants a chunk stored asks again through the storage reference flow.
+	return tx.Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
 }
 
 func (ecsr encryptedChunkStorageRequest) getType() uint16 {
@@ -529,47 +598,65 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		return nil, false
 	}
 
-	if !regexp.MustCompile("^[a-f0-9]{64}$").MatchString(sr.Hash) {
+	if b.storeEncryptedChunkStorageRequest(sr, peer) {
+		b.wakeEncryptedChunkRequests()
+	}
+
+	return nil, false
+}
+
+var encryptedChunkHashFormat = regexp.MustCompile("^[a-f0-9]{64}$")
+
+// storeEncryptedChunkStorageRequest records a peer's request that we fetch a chunk from it and keep it for the
+// readers of some mailboxes, and reports whether there is now something new to fetch.  A request arrives on its own
+// or inside a storage reference request; both come through here, so a chunk is taken on the same terms either way:
+// the owner may store anything, and anyone else only chunks addressed to one of the owner's mailboxes.
+func (b *Bounce) storeEncryptedChunkStorageRequest(sr encryptedChunkStorageRequest, peer string) bool {
+	if !encryptedChunkHashFormat.MatchString(sr.Hash) {
 		log.WithFields(log.Fields{
 			"hash": sr.Hash,
+			"peer": peer,
 		}).Warn("ignoring encrypted chunk storage request with invalid hash")
-		return nil, false
+		return false
+	}
+	if len(sr.Labels) == 0 || len(sr.Labels) > maximumMailboxesPerCopy {
+		log.WithFields(log.Fields{
+			"peer":      peer,
+			"mailboxes": len(sr.Labels),
+		}).Warn("ignoring encrypted chunk storage request with no mailboxes or too many")
+		return false
 	}
 
 	sr.ID = NewID()
-	for _, key := range sr.Recipients {
+	for _, label := range sr.Labels {
+		if len(label) != mailboxLabelSize {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("ignoring encrypted chunk storage request with a malformed mailbox label")
+			return false
+		}
 		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-			ID:        NewID(),
-			Hash:      sr.Hash,
-			PublicKey: key,
+			ID:    NewID(),
+			Hash:  sr.Hash,
+			Label: label,
 		})
 	}
 	sr.Source = peer
+	sr.FullPath = b.platform.ConfigDirectory + "/blobs/" + sr.Hash
 
 	var existingSR encryptedChunkStorageRequest
-	err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
+	err := b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
 	if err == nil {
-		return nil, false
+		return false
 	}
 
-	peerUserKeyMutex.Lock()
-	peerKey, ok := peerUserKeys[peer]
-	peerUserKeyMutex.Unlock()
-	if !ok {
+	sr.OwnerRequested = b.peerIsOwner(peer)
+	if !sr.OwnerRequested && !b.ownerCanReadAnyLabel(sr.Labels) {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Error("unable to handle ecsr from unknown peer")
-		return nil, false
-	}
-	var au authorizedUser
-	err = b.database.First(&au).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting authorized user while handling ecsr")
-	}
-	if bytes.Equal(peerKey, au.PublicKey) {
-		sr.OwnerRequested = true
+			"hash": sr.Hash,
+		}).Warn("ignoring encrypted chunk storage request that is not addressed to a mailbox of this device's owner")
+		return false
 	}
 
 	var alreadyDownloadedSR encryptedChunkStorageRequest
@@ -579,23 +666,22 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		sr.DownloadedAt = time.Now().Unix()
 	}
 
-	sr.FullPath = b.platform.ConfigDirectory + "/blobs/" + sr.Hash
 	err = b.database.Create(&sr).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("database error saving encrypted chunk storage request")
+		return false
 	}
-	b.makeNextEncryptedChunkRequests()
-
-	return nil, false
+	return !sr.Downloaded
 }
 
+// A mailbox whose readers may fetch a stored chunk
 type encryptedChunkRecipient struct {
 	ID                             ID `gorm:"primary_key;"`
 	EncryptedChunkStorageRequestID ID
 	Hash                           string
-	PublicKey                      []byte
+	Label                          []byte `gorm:"index"`
 }
 
 func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID ID) []ID {
@@ -704,8 +790,31 @@ func (recro requestECRO) getPayload() []byte {
 }
 
 func (b *Bounce) handleRequestECRO(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	b.sendEncryptedStorageReferenceOffer(peer)
+	go b.sendEncryptedStorageReferenceOffer(peer)
 	return nil, false
+}
+
+// releaseEncryptedBlob removes a chunk's file and takes its size off the storage counter.  Several storage request
+// rows deleted together share one blob; whichever hook runs first removes it and the rest find it already gone.
+func releaseEncryptedBlob(path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	err = os.Remove(path)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  path,
+		}).Warn("failed to remove encrypted chunk from disk")
+		return
+	}
+	encryptedBlobStorageLimitMutex.Lock()
+	encryptedBlobStorageSize -= info.Size()
+	if encryptedBlobStorageSize < 0 {
+		encryptedBlobStorageSize = 0
+	}
+	encryptedBlobStorageLimitMutex.Unlock()
 }
 
 func (b *Bounce) getEncryptedBlobStorageSize() int64 {
@@ -720,16 +829,6 @@ func (b *Bounce) incrementEncryptedBlobStorageSize(size int64) {
 	defer encryptedBlobStorageLimitMutex.Unlock()
 
 	encryptedBlobStorageSize += size
-}
-
-func (b *Bounce) decrementEncryptedBlobStorageSize(size int64) {
-	encryptedBlobStorageLimitMutex.Lock()
-	defer encryptedBlobStorageLimitMutex.Unlock()
-
-	encryptedBlobStorageSize -= size
-	if encryptedBlobStorageSize < 0 {
-		encryptedBlobStorageSize = 0
-	}
 }
 
 func (b *Bounce) recheckEncryptedBlobStorageSize() {

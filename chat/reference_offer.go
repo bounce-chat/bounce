@@ -141,6 +141,11 @@ func (rro requestReferenceOffer) getPayload() []byte {
 }
 
 func (b *Bounce) handleRequestReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	if b.encrypted {
+		// An encrypted device's offers are of what it holds in the mailboxes the peer asked for
+		go b.sendDirect(peer, b.hostOfferFor(peer))
+		return nil, false
+	}
 	go b.sendReferences(peer)
 	return nil, false
 }
@@ -326,55 +331,6 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		ID:         NewID(),
 		References: references,
 		Incomplete: incomplete,
-	}
-}
-
-func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte) *referenceOffer {
-	// Frame IDs this public key can have
-	var allowedPubkeyIDs []ID
-	b.database.Model(&recipient{}).
-		Where("public_key = ?", publicKey).
-		Pluck("encrypted_frame_id", &allowedPubkeyIDs)
-
-	// Frame IDs this device can have
-	var allowedDeviceIDs []ID
-	b.database.Model(&deviceRecipient{}).
-		Where("recipient_address = ?", address).
-		Pluck("encrypted_frame_id", &allowedDeviceIDs)
-
-	allowedIDs := append(allowedPubkeyIDs, allowedDeviceIDs...)
-
-	// Frame IDs we have delivered
-	var deliveredIDs []ID
-	b.database.Model(&deliveryRecord{}).
-		Where("destination = ?", address).
-		Pluck("frame_id", &deliveredIDs)
-	deliveredMap := map[ID]bool{}
-	for _, id := range deliveredIDs {
-		deliveredMap[id] = true
-	}
-
-	offerIDs := []ID{}
-	for _, id := range allowedIDs {
-		if _, present := deliveredMap[id]; !present {
-			offerIDs = append(offerIDs, id)
-		}
-	}
-
-	var encryptedFrames []encryptedFrame
-	b.database.
-		Select("id", "type").
-		Where("encrypted_frames.id IN (?)", offerIDs).
-		Find(&encryptedFrames)
-
-	references := []frameReference{}
-	for _, ef := range encryptedFrames {
-		references = append(references, frameReference{FrameID: ef.ID, Type: ef.Type})
-	}
-
-	return &referenceOffer{
-		ID:         NewID(),
-		References: references,
 	}
 }
 
@@ -1525,10 +1481,11 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		// An encrypted device may send an empty reference offer in order to trigger the peer
 		// to request the management key hash, so that the peer can check if the encrypted device needs
 		// to be re-keyed.  This is the only case that an empty reference offer should ever be sent.
+		// An encrypted device answers a mailbox request with an offer even when it has nothing for us, so this is
+		// not answered with another mailbox request.
 		go b.sendAck(peer, typeReferenceOffer, ro.ID)
 		b.getManagementKeyHash(peer)
-		b.sendEncryptedClearBefores(peer)
-		b.sendDirect(peer, requestECRO{})
+		go b.sendEncryptedClearBefores(peer)
 		return nil, false
 	}
 
@@ -1541,7 +1498,32 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	}
 	b.setIncompleteOfferFrom(peer, ro.Incomplete)
 
-	references, acks := b.processReferenceOffer(peer, ro.References)
+	// References to frames stored on an encrypted device are opaque copy IDs.  We cannot tell from the outside whether
+	// we already hold the frame inside one, so we request every copy this host has not delivered to us before, and
+	// ack the ones it has.  Only an encrypted device we know of is taken up on such an offer, and an encrypted device
+	// is never answered on non-copy references so it cannot probe which inner frames we hold.
+	hostReferences := []frameReference{}
+	otherReferences := []frameReference{}
+	for _, reference := range ro.References {
+		if reference.Type == typeEncryptedFrame {
+			hostReferences = append(hostReferences, reference)
+		} else {
+			otherReferences = append(otherReferences, reference)
+		}
+	}
+
+	var references, acks []frameReference
+	if encryptedPeer && !b.encrypted {
+		for _, reference := range hostReferences {
+			if b.frameIsDeliveredTo(reference.FrameID, typeEncryptedFrame, peer) {
+				acks = append(acks, reference)
+			} else {
+				references = append(references, reference)
+			}
+		}
+	} else {
+		references, acks = b.processReferenceOffer(peer, otherReferences)
+	}
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	dropped := 0
@@ -1579,7 +1561,14 @@ func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([
 	typesToIDs := referencedIDs(offered)
 
 	catchUpMutex.Lock()
-	peerIsKnown := b.isKnownReferencePeer(peer)
+
+	// An encrypted device stores copies under IDs their senders chose, so it cannot recognise an offered frame as
+	// one it holds and asks for everything, the same as for a peer we do not know.  A copy of a frame it already
+	// has is recognised by its mailbox tags when it arrives (see handleEncryptedFrame).
+	peerIsKnown := false
+	if !b.encrypted {
+		peerIsKnown = b.isKnownReferencePeer(peer)
+	}
 	if !peerIsKnown {
 		for _, frameType := range referencedTypes {
 			for _, id := range typesToIDs[frameType] {
@@ -1607,16 +1596,7 @@ func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([
 	// Make sure that anything we ack is something this peer was allowed to offer us.  If not, they might be
 	// trying to figure out what we have
 	allowed := map[uint16]map[ID]bool{}
-	var offerable *referenceOffer
-	if b.encrypted {
-		peerUserKeyMutex.Lock()
-		pubkey := peerUserKeys[peer]
-		peerUserKeyMutex.Unlock()
-		offerable = b.getEncryptedReferenceOfferFor(peer, pubkey)
-	} else {
-		offerable = b.getReferenceOfferFor(peer)
-	}
-
+	offerable := b.getReferenceOfferFor(peer)
 	for frameType, ids := range referencedIDs(offerable.References) {
 		allowed[frameType] = map[ID]bool{}
 		for _, id := range ids {
@@ -1637,30 +1617,20 @@ func (b *Bounce) determineFramesAlreadyReceived(offeredIDs []ID, frameType uint1
 	dontHave := []frameReference{}
 	alreadyHave := []frameReference{}
 
-	var table string
-	var ok bool
-	if !b.encrypted {
-		table, ok = typeTable[frameType]
-		if !ok {
-			log.WithFields(log.Fields{
-				"type": frameType,
-			}).Warn("attempted to get frame that doesn't have database table")
-		}
+	table, ok := typeTable[frameType]
+	if !ok {
+		log.WithFields(log.Fields{
+			"type": frameType,
+		}).Warn("attempted to get frame that doesn't have database table")
 	}
 
 	for _, id := range offeredIDs {
 		ref := frameReference{FrameID: id, Type: frameType}
 
-		var err error
-		if b.encrypted {
-			var ef encryptedFrame
-			err = b.database.Where("id = ? AND type = ?", id, frameType).Take(&ef).Error
-		} else {
-			var count int64
-			err = b.database.Table(table).Where("id = ?", id).Count(&count).Error
-			if count == 0 {
-				err = gorm.ErrRecordNotFound
-			}
+		var count int64
+		err := b.database.Table(table).Where("id = ?", id).Count(&count).Error
+		if err == nil && count == 0 {
+			err = gorm.ErrRecordNotFound
 		}
 
 		if err == nil {

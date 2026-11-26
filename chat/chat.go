@@ -68,6 +68,10 @@ type Bounce struct {
 	// handlerSlots bounds the number of frame handlers running at once across all peers.
 	// See maximumRunningHandlersGlobal in remote_device.go.
 	handlerSlots chan struct{}
+
+	// encryptedChunkRequestWake wakes the loop on an encrypted device that asks peers for the chunks they want
+	// stored.  See wakeEncryptedChunkRequests.
+	encryptedChunkRequestWake chan struct{}
 }
 
 // background starts fn as an engine-lifetime goroutine that Shutdown will wait

@@ -1,29 +1,23 @@
 package chat
 
 import (
-	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"errors"
 	"sort"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
+// What an encrypted device sends a reader for one stored frame: the copy's host ID, the sealed payload, and the
+// mailbox entry the reader asked for (see mailbox.go).  The reader derives the wrap key from the mailbox's secret
+// and epoch, unwraps the DEK, and opens the frame.
 type encryptedReceive struct {
-	ID               ID
-	Type             uint16
-	Payload          []byte
-	EncryptedDEK     []byte
-	EncrypterKey     []byte
-	EncrypterAddress string
-	UseAddress       bool
-	OldKeyHash       string // Indicates that a previously used key will be required to decrypt this frame
-	savedAt          int64
+	ID         ID
+	Payload    []byte
+	Label      []byte
+	WrappedDEK []byte
 }
 
 func (er encryptedReceive) getID() ID {
@@ -44,14 +38,11 @@ func (er encryptedReceive) getType() uint16 {
 	return typeEncryptedReceive
 }
 
-func (er encryptedReceive) getSavedAt() int64 {
-	return er.savedAt
-}
-
 // A catch up of frames stored on an encrypted device, staged the same way as a plain catch up: at most
-// catchUpPayloadBudget bytes per catch up, the earliest first, with Incomplete set when more is waiting
+// catchUpPayloadBudget bytes per catch up, the earliest first, with Incomplete set when more is waiting.  A host
+// orders frames by when it received them, which is all it knows about them.
 type encryptedCatchUp struct {
-	Frames     sortableEncryptedReceives
+	Frames     []encryptedReceive
 	Incomplete bool
 	onComplete func()
 }
@@ -62,40 +53,6 @@ func (ecu *encryptedCatchUp) complete() {
 		ecu.onComplete = nil
 		complete()
 	}
-}
-
-type sortableEncryptedReceives []encryptedReceive
-
-func (ser sortableEncryptedReceives) Len() int {
-	return len(ser)
-}
-func (ser sortableEncryptedReceives) Swap(i, j int) {
-	ser[i], ser[j] = ser[j], ser[i]
-}
-func (ser sortableEncryptedReceives) Less(i, j int) bool {
-	if ser[i].savedAt == ser[j].savedAt {
-		iType := ser[i].Type
-		jType := ser[j].Type
-
-		iOrder, ok := catchUpOrder[iType]
-		if !ok {
-			log.WithFields(log.Fields{
-				"type": iType,
-			}).Error("encrypted catch up type cannot be ordered")
-			return false
-		}
-		jOrder, ok := catchUpOrder[jType]
-		if !ok {
-			log.WithFields(log.Fields{
-				"type": jType,
-			}).Error("encrypted catch up type cannot be ordered")
-			return false
-		}
-
-		return iOrder < jOrder
-	}
-
-	return ser[i].savedAt < ser[j].savedAt
 }
 
 func (ecu *encryptedCatchUp) getType() uint16 {
@@ -112,6 +69,26 @@ func (ecu *encryptedCatchUp) getPayload() []byte {
 	return bytes
 }
 
+// recordHostDelivery remembers that a host delivered one of its copies to us, so that it is acked rather than
+// requested the next time the host offers it
+func (b *Bounce) recordHostDelivery(peer string, hostID ID) {
+	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
+		Destination: peer,
+		FrameID:     hostID,
+		FrameType:   typeEncryptedFrame,
+	}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"id":    hostID,
+			"peer":  peer,
+		}).Error("error saving delivery tracking for encrypted receive")
+	}
+}
+
+// handleEncryptedCatchUp opens the frames a host served and replays them through the normal catch up, which knows
+// them by the copy IDs the host does: those are what it acks, refuses and re-requests, so the host never sees the
+// ID or type of a frame it stored.
 func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	var ecu encryptedCatchUp
 	err := msgpack.Unmarshal(payload, &ecu)
@@ -122,30 +99,28 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	decryptedFrames := []frame{}
-	keyHistory := b.encryptionKeyHistory()
+	index := b.mailboxIndex()
+	cu := catchUp{Incomplete: ecu.Incomplete}
+	hostCopies := []ID{}
 	for _, er := range ecu.Frames {
-		decrypted, err := b.decryptEncryptedReceive(er, keyHistory)
-		if err == nil {
-			decryptedFrames = append(decryptedFrames, decrypted)
+		decrypted, err := index.open(er)
+		if err != nil {
+			// Not acked, and never asked for from this host again: it is in none of the mailboxes we can read now
+			log.WithFields(log.Fields{
+				"id":    er.ID,
+				"peer":  peer,
+				"error": err.Error(),
+			}).Warn("could not open frame in encrypted catch up")
+			b.refuseReference(peer, er.ID, typeEncryptedFrame)
+			continue
 		}
+		cu.Frames = append(cu.Frames, decrypted)
+		hostCopies = append(hostCopies, er.ID)
 	}
 
-	cu := &catchUp{
-		Frames:     decryptedFrames,
-		Incomplete: ecu.Incomplete,
-	}
-	decryptedCatchUpPayload, err := msgpack.Marshal(cu)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("cannot msgpack marshal catch up")
-		return nil, false
-	}
-
-	br, first := b.handleCatchUp(peer, decryptedCatchUpPayload, true)
-	b.sendDirect(peer, requestECRO{})
-	return br, first
+	b.applyCatchUp(peer, cu, hostCopies)
+	go b.sendDirect(peer, requestECRO{})
+	return nil, false
 }
 
 func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (broadcastable, bool) {
@@ -158,294 +133,130 @@ func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	decrypted, err := b.decryptEncryptedReceive(er, b.encryptionKeyHistory())
+	decrypted, err := b.mailboxIndex().open(er)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    er.ID,
+			"peer":  peer,
+			"error": err.Error(),
+		}).Warn("could not open encrypted receive")
+		return nil, false
+	}
+
+	if _, present := allowedCatchUpFrames[decrypted.Type]; !present {
+		log.WithFields(log.Fields{
+			"frame_type": decrypted.Type,
+			"peer":       peer,
+		}).Warn("ignoring frame in encrypted receive with a type that is not allowed")
 		return nil, false
 	}
 
 	handlers := b.getHandlers(false)
 	handler, ok := handlers[decrypted.Type]
-	if ok {
-		br, _ := handler(peer, decrypted.Payload, false)
-		if br != nil {
-			go b.sendAck(peer, decrypted.Type, decrypted.ID)
-			err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
-				Destination: peer,
-				FrameID:     decrypted.ID,
-				FrameType:   decrypted.Type,
-			}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    decrypted.ID,
-					"type":  decrypted.Type,
-					"peer":  peer,
-				}).Error("error saving delivery tracking for encrypted receive")
-			}
-		}
-	} else {
+	if !ok {
 		log.WithFields(log.Fields{
 			"type": decrypted.Type,
 		}).Error("encrypted receive type does not have a handler")
+		return nil, false
+	}
+
+	// The host is acked by the ID of its copy, never the ID of the frame inside, which is why this is done here and
+	// the frame is not handed back to the read loop to ack.  Otherwise the frame is treated as one that arrived from
+	// any other device: the host is recorded as holding it, and the first time we see it, it is passed on.
+	br, firstTimeSeen := handler(peer, decrypted.Payload, false)
+	if br != nil {
+		go b.sendAck(peer, typeEncryptedFrame, er.ID)
+		b.recordHostDelivery(peer, er.ID)
+		b.markDeliveredTo(br, peer)
+		if firstTimeSeen {
+			b.broadcast(br)
+		}
 	}
 
 	return nil, false
 }
 
-func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistory map[string][]byte) (frame, error) {
-	var kek []byte
-	var empty frame
-	var err error
+// How many IDs go into one query when looking up requested frames, well under what SQLite will bind
+const encryptedCatchUpLookupBatch = 500
 
-	if f.UseAddress {
-		myDevice, ok := b.getDeviceFromAddress(b.network.Address())
-		if !ok {
-			log.Warn("my device not found when handling encrypted receive")
-		}
-		recipientDevice, ok := b.getDeviceFromAddress(f.EncrypterAddress)
-		if !ok {
-			log.WithFields(log.Fields{
-				"address": f.EncrypterAddress,
-			}).Error("encrypter device not found for encrypted receive")
-		}
-
-		kek, err = b.generateKEKFromPrivateKey(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating key encryption key from device for encrypted frame")
-			return empty, err
-		}
-	} else if f.OldKeyHash != "" {
-		oldPrivateKey, ok := encryptionKeyHistory[f.OldKeyHash]
-		if !ok {
-			log.WithFields(log.Fields{
-				"id":      f.ID,
-				"type":    f.Type,
-				"old_key": f.OldKeyHash,
-			}).Error("unable to find encryption key for encrypted receive that specifies and older key")
-			return empty, errors.New("encryption key not found")
-		}
-		kek, err = b.generateKEKFromPrivateKey(oldPrivateKey, f.EncrypterKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"old_key": f.OldKeyHash,
-				"error":   err.Error(),
-			}).Error("error generating key encryption key for encrypted frame")
-			return empty, err
-		}
-	} else {
-		kek, err = b.generateKEK(f.EncrypterKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating key encryption key for encrypted frame")
-			return empty, err
-		}
-	}
-
-	kekBlock, err := aes.NewCipher(kek)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating block")
-		return empty, err
-	}
-	kekGCM, err := cipher.NewGCMWithRandomNonce(kekBlock)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating gcm")
-		return empty, err
-	}
-
-	dek, err := kekGCM.Open(nil, []byte{}, f.EncryptedDEK, nil)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"id":    f.ID,
-			"type":  f.Type,
-			"error": err.Error(),
-		}).Error("error decrypting key in encrypted frame")
-		return empty, err
-	}
-
-	dekBlock, err := aes.NewCipher(dek)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating block")
-		return empty, err
-	}
-	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating gcm")
-		return empty, err
-	}
-
-	decryptedPayload, err := dekGCM.Open(nil, []byte{}, f.Payload, encryptedFrameAdditionalData(f.ID, f.Type))
-	if err != nil {
-		log.WithFields(log.Fields{
-			"id":    f.ID,
-			"type":  f.Type,
-			"error": err.Error(),
-		}).Error("error decrypting encrypted frame")
-		return empty, err
-	}
-
-	return frame{
-		ID:      f.ID,
-		Type:    f.Type,
-		Payload: decryptedPayload,
-	}, nil
-}
-
+// generateEncryptedCatchUpFor serves the frames a peer requested from the mailboxes it asked for.  A frame is only
+// served through a mailbox entry whose label the peer presented, so the host never hands out a wrap for a mailbox
+// the peer did not prove it can read.  The earliest frames that fit the budget are sent, and Incomplete is set when
+// any were left for the next request.
 func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *encryptedCatchUp {
 	ecu := &encryptedCatchUp{}
 
-	peerUserKeyMutex.Lock()
-	peerKey, ok := peerUserKeys[peer]
-	peerUserKeyMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Error("cannot generate encrypted catch up for peer with unknown key")
-		return ecu
+	requested := []ID{}
+	for _, reference := range rr.References {
+		if reference.Type == typeEncryptedFrame {
+			requested = append(requested, reference.FrameID)
+		}
 	}
 
-	var au authorizedUser
-	err := b.database.First(&au).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting authorized user while generating encrypted catch up")
+	// Put what was asked for in the order it arrived here, without loading any payloads yet
+	type arrival struct {
+		ID      ID
+		SavedAt int64
+		Arrived int64
 	}
-
-	allowedRecipientKeys := [][]byte{peerKey}
-	originalOffer := b.getEncryptedReferenceOfferFor(peer, peerKey)
-	// If this public key belongs to our authorized user, then also include anything we have for their old keys
-	if bytes.Equal(peerKey, au.PublicKey) {
-		var oldKeys []oldKey
-		err = b.database.Where("authorized_user_id = ?", au.ID).Find(&oldKeys).Error
+	arrivals := []arrival{}
+	for start := 0; start < len(requested); start += encryptedCatchUpLookupBatch {
+		batch := requested[start:min(start+encryptedCatchUpLookupBatch, len(requested))]
+		var found []arrival
+		err := b.database.
+			Model(&encryptedFrame{}).
+			Select("id, saved_at, rowid AS arrived").
+			Where("id IN ?", batch).
+			Scan(&found).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("database error getting all old keys")
+			}).Fatal("database error looking up requested encrypted frames")
 		}
-
-		for _, pastKey := range oldKeys {
-			allowedRecipientKeys = append(allowedRecipientKeys, pastKey.PublicKey)
-			okEro := b.getEncryptedReferenceOfferFor(peer, pastKey.PublicKey)
-			if okEro != nil {
-				originalOffer.References = append(originalOffer.References, okEro.References...)
-			}
+		arrivals = append(arrivals, found...)
+	}
+	sort.Slice(arrivals, func(i, j int) bool {
+		if arrivals[i].SavedAt == arrivals[j].SavedAt {
+			return arrivals[i].Arrived < arrivals[j].Arrived
 		}
-	}
+		return arrivals[i].SavedAt < arrivals[j].SavedAt
+	})
 
-	allowed := map[ID]bool{}
-	for _, ref := range originalOffer.References {
-		allowed[ref.FrameID] = true
-	}
-	validIDs := []ID{}
-	for _, ref := range rr.References {
-		if _, ok := allowed[ref.FrameID]; ok {
-			validIDs = append(validIDs, ref.FrameID)
-		}
-	}
-
-	metadata := loadCatchUpFrameMetadata(
-		b.database.Model(&encryptedFrame{}).Select("id, type, timestamp AS saved_at"),
-		validIDs,
-	)
-	sort.Sort(sortableCatchUpFrameMetadata(metadata))
 	total := 0
-	for _, item := range metadata {
+	for _, next := range arrivals {
 		var ef encryptedFrame
-		err := b.database.Preload(clause.Associations).Take(&ef, "id = ?", item.ID).Error
+		err := b.database.Preload("Mailboxes").Take(&ef, "id = ?", next.ID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": item.ID,
-				}).Error("requested encrypted frame not found")
 				continue
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up encrypted frame")
 			}
-		}
-
-		var desiredRecipient recipient
-		found := false
-		for _, r := range ef.Recipients {
-			for _, allowedKey := range allowedRecipientKeys {
-				if bytes.Equal(r.PublicKey, allowedKey) {
-					desiredRecipient = r
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-
-		var desiredDeviceRecipient deviceRecipient
-		encryptedToDevice := false
-		if !found {
-			for _, dr := range ef.DeviceRecipients {
-				if dr.RecipientAddress == peer {
-					found = true
-					desiredDeviceRecipient = dr
-					encryptedToDevice = true
-					break
-				}
-			}
-		}
-
-		if !found {
 			log.WithFields(log.Fields{
-				"id": item.ID,
-			}).Error("encrypted frame requested by recipient not in recipient list")
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted frame")
+		}
+
+		entry, ok := b.mailboxEntryFor(peer, ef)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   next.ID,
+				"peer": peer,
+			}).Warn("encrypted frame requested by a peer that did not ask for any of its mailboxes")
 			continue
 		}
 
-		var er encryptedReceive
-		if !encryptedToDevice {
-			er = encryptedReceive{
-				ID:           ef.ID,
-				Type:         ef.Type,
-				Payload:      ef.Payload,
-				EncryptedDEK: desiredRecipient.EncryptedDEK,
-				EncrypterKey: desiredRecipient.EncrypterKey,
-				UseAddress:   false,
-				savedAt:      ef.Timestamp,
-			}
-
-			// If this recipient differs from the current key for our user, include the key hash of the appropriate key.  We also
-			// attach this to updateDevices, in case we're revoking a device and will be changing keys at the same time.
-			if !bytes.Equal(peerKey, desiredRecipient.PublicKey) || ef.Type == typeUpdateDevice {
-				er.OldKeyHash = hashString(blake3.Sum256(desiredRecipient.PublicKey))
-			}
-		} else {
-			er = encryptedReceive{
-				ID:               ef.ID,
-				Type:             ef.Type,
-				Payload:          ef.Payload,
-				EncryptedDEK:     desiredDeviceRecipient.EncryptedDEK,
-				EncrypterAddress: desiredDeviceRecipient.Counterparty,
-				UseAddress:       true,
-				savedAt:          ef.Timestamp,
-			}
-		}
-
-		if len(ecu.Frames) > 0 && total+len(er.Payload) > catchUpPayloadBudget {
+		size := len(ef.Payload)
+		if len(ecu.Frames) > 0 && total+size > catchUpPayloadBudget {
 			ecu.Incomplete = true
 			break
 		}
-		ecu.Frames = append(ecu.Frames, er)
-		total += len(er.Payload)
+		total += size
+
+		ecu.Frames = append(ecu.Frames, encryptedReceive{
+			ID:         ef.ID,
+			Payload:    ef.Payload,
+			Label:      entry.Label,
+			WrappedDEK: entry.WrappedDEK,
+		})
 	}
 
 	return ecu

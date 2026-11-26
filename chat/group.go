@@ -220,12 +220,17 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		}).Fatal("cannot msgpack marshal group")
 	}
 
-	// The group creation's ID is generated from the marshalled group, which has no ID yet, and the creation time.
-	// That is the group's ID too, so the original state of a group cannot be modified during replication.
+	// The group creation's ID is generated from the marshalled group, which has no ID yet, the creation time, and
+	// the secret that establishes the group's first key.  That is the group's ID too, so the original state of a
+	// group cannot be modified during replication.
 	gc := groupCreation{
 		Nonce:     newNonce(),
 		Timestamp: creationTime,
 		Data:      groupData,
+	}
+	err = b.attachInitialGroupKey(&gc, profile)
+	if err != nil {
+		return errors.New("error creating group key: " + err.Error())
 	}
 	gc.ID = gc.generateID()
 	g.ID = gc.ID
@@ -265,6 +270,8 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 	}
 
 	b.reloadGroupConsensus(g.ID)
+	b.deriveGroupKeys(g.ID)
+	go b.refreshMailboxRequests()
 
 	uiGroup := Group{
 		ID:                     g.ID,
