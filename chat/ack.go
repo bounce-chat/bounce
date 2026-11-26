@@ -227,7 +227,23 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 	}
 }
 
+// sendAck tells a peer that we have a frame, or have no use for it, so that the peer stops offering it.
+//
+// An encrypted device is the exception.  It knows three things by the IDs we know them by: its reference offers, the
+// copies it holds and its offers of the chunks it holds.  Every other frame reaches us from it sealed inside a copy,
+// and is acked by the ID of that copy where the copy is opened (see applyCatchUp and handleEncryptedReceive).  The ID
+// and type of the frame inside are what an encrypted device must not learn, so a handler that acks a frame it was
+// handed has nothing to say when it was an encrypted device that handed it over.
 func (b *Bounce) sendAck(peer string, frameType uint16, frameID ID) {
+	if !b.encrypted && frameType != typeReferenceOffer && frameType != typeEncryptedFrame && frameType != typeEncryptedChunkOffer {
+		encryptedDeviceCacheMutex.Lock()
+		_, encryptedPeer := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+		if encryptedPeer {
+			return
+		}
+	}
+
 	b.sendDirect(peer, &ack{
 		References: []frameReference{frameReference{Type: frameType, FrameID: frameID}},
 	})

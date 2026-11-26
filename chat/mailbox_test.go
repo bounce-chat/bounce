@@ -791,3 +791,57 @@ func TestAFrameForEveryoneWeKnowIsSealedToOurGroupsAndToTheUsersOutsideThem(t *t
 	_, ok = openWith(outsiders[1], onAnOutsiders)
 	assert.False(t, ok)
 }
+
+// An encrypted device is acked by the IDs of the copies it serves.  A handler that turns away the frame inside a
+// copy acks the peer that handed it over, so that the peer stops offering it, and when that peer is an encrypted
+// device there is nothing to say: the ID and type of the frame are what it must not learn.
+func TestAFrameFromAnEncryptedDeviceIsNeverAckedByItsOwnID(t *testing.T) {
+	me, _, _, _ := createUsersAndGroups(t)
+	host := fakeEncryptedDeviceOf(t, me.currentUserID())
+	conn, err := host.Dial(me.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	// I am typing in a thread, and my encrypted device serves me an older draft of it, which the draft handler turns
+	// away with an ack to whoever sent it
+	thread := NewID()
+	me.UpdateDraft(thread, "what I am typing now")
+	older := signedDraft(me, thread, "what I typed a minute ago", time.Now().Unix()-60)
+	served := receivesOf(sealFor(t, me, older))
+	assert.Equal(t, 1, len(served))
+	assert.NoError(t, writeFrame(conn, typeEncryptedCatchUp, (&encryptedCatchUp{Frames: served}).getPayload()))
+
+	namesTheDraft := func(frameType uint16, payload []byte) bool {
+		if frameType != typeAck {
+			return false
+		}
+		var a ack
+		assert.NoError(t, msgpack.Unmarshal(payload, &a))
+		for _, reference := range a.References {
+			if reference.FrameID == older.ID || reference.Type == typeDraft {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Nothing I say names the draft: not before I ask the device what else it has, which is the last thing the catch
+	// up has me send, and not in the moments after
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		frameType, payload, err := readFrame(conn, true)
+		assert.NoError(t, err, "the catch up was never answered")
+		assert.False(t, namesTheDraft(frameType, payload), "the encrypted device was told the ID or type of a frame it stored")
+		if frameType == typeRequestECRO {
+			break
+		}
+	}
+	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		frameType, payload, err := readFrame(conn, true)
+		if err != nil {
+			break
+		}
+		assert.False(t, namesTheDraft(frameType, payload), "the encrypted device was told the ID or type of a frame it stored")
+	}
+}
