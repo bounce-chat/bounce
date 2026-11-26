@@ -317,7 +317,38 @@ func validManagementKeys(publicECDHKey []byte, signingKey []byte) bool {
 	return err == nil
 }
 
+const encryptedDeviceBindingDomain = "bounce-encrypted-device-binding:"
+
+type addEncryptedDevicePayload struct {
+	Address   string
+	Signature []byte
+}
+
+func encryptedDeviceBindingHash(address string, userID ID) []byte {
+	hasher := blake3.New()
+	hasher.Write([]byte(encryptedDeviceBindingDomain))
+	hasher.Write([]byte(address))
+	hasher.Write([]byte(":"))
+	hasher.Write(userID[:])
+	return hasher.Sum(nil)
+}
+
+func parseAddEncryptedDevicePayload(data []byte) (addEncryptedDevicePayload, error) {
+	var p addEncryptedDevicePayload
+	if err := msgpack.Unmarshal(data, &p); err != nil {
+		return addEncryptedDevicePayload{}, err
+	}
+	if !onionAddressRegex.MatchString(p.Address) {
+		return addEncryptedDevicePayload{}, errInvalidAddress
+	}
+	if len(p.Signature) != ed25519.SignatureSize {
+		return addEncryptedDevicePayload{}, errInvalidEncryptedDeviceSignature
+	}
+	return p, nil
+}
+
 type encryptedDeviceManagementRequest struct {
+	UserID     ID
 	Secret     string
 	SigningKey []byte
 	Pubkey     []byte
@@ -357,10 +388,10 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 
 	// These are the keys every later proof of ownership and management action is checked against, so a key that could
 	// never check anything is refused here rather than stored
-	if !validManagementKeys(edmr.Pubkey, edmr.SigningKey) {
+	if edmr.UserID == NilID || !validManagementKeys(edmr.Pubkey, edmr.SigningKey) {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Warn("invalid keys in encrypted device management request")
+		}).Warn("invalid user ID or keys in encrypted device management request")
 		go b.sendDirect(peer, &encryptedDeviceManagementResponse{Accepted: false})
 		return nil, false
 	}
@@ -378,7 +409,8 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 			}).Fatal("database error creating authorized user")
 		}
 
-		go b.sendDirect(peer, &encryptedDeviceManagementResponse{Accepted: true})
+		sig := b.network.Sign(encryptedDeviceBindingHash(b.network.Address(), edmr.UserID))
+		go b.sendDirect(peer, &encryptedDeviceManagementResponse{Accepted: true, Signature: sig})
 	} else {
 		go b.sendDirect(peer, &encryptedDeviceManagementResponse{Accepted: false})
 	}
@@ -405,6 +437,7 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 	b.insertConnectionIntoDevicePool(conn)
 
 	edmr := encryptedDeviceManagementRequest{
+		UserID:     currentUser.ID,
 		Pubkey:     currentUser.PublicECDHKey,
 		SigningKey: currentUser.PublicECDSAKey,
 		Secret:     secret,
@@ -425,7 +458,8 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 }
 
 type encryptedDeviceManagementResponse struct {
-	Accepted bool
+	Accepted  bool
+	Signature []byte
 }
 
 func (edmr *encryptedDeviceManagementResponse) getType() uint16 {
@@ -454,6 +488,9 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 
 	wantToManageMutex.Lock()
 	asked, ok := wantToManage[peer]
+	if ok && time.Since(asked) <= wantToManageWindow {
+		delete(wantToManage, peer)
+	}
 	wantToManageMutex.Unlock()
 	if !ok || time.Since(asked) > wantToManageWindow {
 		log.Warn("received encrypted device management response from peer that we did not request to manage recently")
@@ -461,7 +498,14 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 	}
 
 	if edmr.Accepted {
-		err := b.addEncryptedDevice(peer)
+		if len(edmr.Signature) != ed25519.SignatureSize || !b.network.VerifySignature(peer, encryptedDeviceBindingHash(peer, b.currentUserID()), edmr.Signature) {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("encrypted device management acceptance had invalid binding signature")
+			b.ui.EncryptedDeviceRejected()
+			return nil, false
+		}
+		err := b.addEncryptedDevice(peer, edmr.Signature)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

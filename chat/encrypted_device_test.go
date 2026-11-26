@@ -413,15 +413,19 @@ func TestManagementKeysAreValidatedAndEveryActionIsAnswered(t *testing.T) {
 	userKey, err := ecdh.X25519().GenerateKey(rand.Reader)
 	assert.NoError(t, err)
 
-	claim := func(request encryptedDeviceManagementRequest) bool {
+	claim := func(request encryptedDeviceManagementRequest) encryptedDeviceManagementResponse {
 		assert.NoError(t, writeFrame(conn, typeEncryptedDeviceManagementRequest, request.getPayload()))
 		var response encryptedDeviceManagementResponse
 		assert.NoError(t, msgpack.Unmarshal(readUntil(t, conn, typeEncryptedDeviceManagementResponse), &response))
-		return response.Accepted
+		return response
 	}
-	assert.False(t, claim(encryptedDeviceManagementRequest{Secret: setup, SigningKey: signingPublic, Pubkey: []byte("not a key")}))
+	ownerID := NewID()
+	assert.False(t, claim(encryptedDeviceManagementRequest{UserID: ownerID, Secret: setup, SigningKey: signingPublic, Pubkey: []byte("not a key")}).Accepted)
+	assert.False(t, claim(encryptedDeviceManagementRequest{UserID: NilID, Secret: setup, SigningKey: signingPublic, Pubkey: userKey.PublicKey().Bytes()}).Accepted)
 	assert.False(t, host.encryptedManagerProvisioned(), "a device was claimed with a key nobody could ever prove they hold")
-	assert.True(t, claim(encryptedDeviceManagementRequest{Secret: setup, SigningKey: signingPublic, Pubkey: userKey.PublicKey().Bytes()}))
+	accepted := claim(encryptedDeviceManagementRequest{UserID: ownerID, Secret: setup, SigningKey: signingPublic, Pubkey: userKey.PublicKey().Bytes()})
+	assert.True(t, accepted.Accepted)
+	assert.True(t, host.network.VerifySignature(host.network.Address(), encryptedDeviceBindingHash(host.network.Address(), ownerID), accepted.Signature))
 
 	act := func(action []byte) encryptedDeviceManagementActionResponse {
 		med := manageEncryptedDevice{ID: NewID(), Action: action, Signature: ed25519.Sign(signingPrivate, action)}
@@ -484,15 +488,31 @@ func TestClaimingADeviceNeedsAProfileAndARecentRequest(t *testing.T) {
 	assert.Error(t, nobody.RequestToManageEncryptedDevice(host.network.Address()+":"+setup))
 	assert.False(t, host.encryptedManagerProvisioned())
 
-	// An acceptance is only taken from a device we asked recently
+	// An acceptance is only taken from a device we asked recently, and must carry a valid binding signature from it
 	bob := newBounceUser("Bob")
 	t.Cleanup(bob.Shutdown)
-	accepted, _ := msgpack.Marshal(encryptedDeviceManagementResponse{Accepted: true})
+	validSig := host.network.Sign(encryptedDeviceBindingHash(host.network.Address(), bob.currentUserID()))
+	accepted, _ := msgpack.Marshal(encryptedDeviceManagementResponse{Accepted: true, Signature: validSig})
 	wantToManageMutex.Lock()
 	wantToManage[host.network.Address()] = time.Now().Add(-wantToManageWindow - time.Second)
 	wantToManageMutex.Unlock()
 	bob.handleEncryptedDeviceManagementResponse(host.network.Address(), accepted, false)
 	assert.Equal(t, int64(0), rowsIn(t, bob, "encrypted_sync_devices"), "an acceptance was taken from a device asked too long ago")
+
+	// Even within the window, an acceptance without a valid binding signature from the device is refused
+	for _, badSig := range [][]byte{
+		nil,
+		make([]byte, ed25519.SignatureSize),
+		host.network.Sign(encryptedDeviceBindingHash(host.network.Address(), NewID())),
+		bob.network.Sign(encryptedDeviceBindingHash(host.network.Address(), bob.currentUserID())),
+	} {
+		wantToManageMutex.Lock()
+		wantToManage[host.network.Address()] = time.Now()
+		wantToManageMutex.Unlock()
+		badAccepted, _ := msgpack.Marshal(encryptedDeviceManagementResponse{Accepted: true, Signature: badSig})
+		bob.handleEncryptedDeviceManagementResponse(host.network.Address(), badAccepted, false)
+		assert.Equal(t, int64(0), rowsIn(t, bob, "encrypted_sync_devices"), "an acceptance with an invalid binding signature must be refused")
+	}
 
 	// Asking again starts a new window, and clears out requests that have run out
 	stale := newTestnet().Address()
@@ -1183,4 +1203,83 @@ func TestReKeyingAHostRevokesOwnerPrivilegesOfConnectedDevicesHoldingTheOldKey(t
 	assert.NotEqual(t, oldUser.PublicECDHKey, au.PublicKey)
 	assert.True(t, host.peerIsOwner(legit.network.Address()), "legitimate device with new key must re-prove ownership")
 	assert.False(t, host.peerIsOwner(revokedPeer.Address()), "connected device holding only the old key must lose owner privileges immediately")
+}
+
+// Adding an encrypted device to a user's profile requires a mutual signature: the user signs the updateUser and the
+// encrypted device signs a binding over its own address and the user's ID.  Another user cannot squat on someone
+// else's encrypted device address with an unsigned update, a replayed signature, or a forged signature.
+func TestAddEncryptedDeviceRequiresValidHostBindingSignature(t *testing.T) {
+	bob := newBounceUser("Bob")
+	alice := newBounceUser("Alice")
+	mallory := newBounceUser("Mallory")
+	t.Cleanup(bob.Shutdown)
+	t.Cleanup(alice.Shutdown)
+	t.Cleanup(mallory.Shutdown)
+	introduce(t, bob, alice)
+	introduce(t, bob, mallory)
+
+	// Disconnect Alice from Bob so Mallory can race to claim Alice's host on Bob before Alice's legitimate update lands
+	disconnectFrom(t, alice, bob)
+
+	host, setup := newEncryptedDevice(t)
+	claimEncryptedDevice(t, alice, host, setup)
+
+	var alicesUpdate updateUser
+	assert.NoError(t, alice.database.Where("target = ? AND type = ?", alice.currentUserID(), updateUserTypeAddEncryptedDevice).First(&alicesUpdate).Error)
+	alicesBinding, err := parseAddEncryptedDevicePayload(alicesUpdate.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, host.network.Address(), alicesBinding.Address)
+
+	// Clear the process-global cache entry Alice's own apply wrote so we observe only what Bob accepts
+	encryptedDeviceCacheMutex.Lock()
+	delete(encryptedDeviceCache, host.network.Address())
+	encryptedDeviceCacheMutex.Unlock()
+
+	signUpdateFor := func(author *Bounce, data []byte) []byte {
+		uu := updateUser{
+			Nonce:     newNonce(),
+			Target:    author.currentUserID(),
+			Timestamp: time.Now().Unix(),
+			Type:      updateUserTypeAddEncryptedDevice,
+			Data:      data,
+		}
+		uu.ID = uu.generateID()
+		uu.OriginalPayload, _ = msgpack.Marshal(&uu)
+		sc := author.createSignedContainer(typeUpdateUser, uu.OriginalPayload)
+		uu.Signature, uu.Signer = sc.Signature, sc.Signer
+		return uu.getPayload()
+	}
+
+	replayedPayload, _ := msgpack.Marshal(addEncryptedDevicePayload{
+		Address:   host.network.Address(),
+		Signature: alicesBinding.Signature,
+	})
+	forgedPayload, _ := msgpack.Marshal(addEncryptedDevicePayload{
+		Address:   host.network.Address(),
+		Signature: mallory.network.Sign(encryptedDeviceBindingHash(host.network.Address(), mallory.currentUserID())),
+	})
+
+	// Mallory attempts to claim Alice's host on Bob using raw address bytes, Alice's replayed signature, or Mallory's own signature
+	for _, attempt := range [][]byte{
+		[]byte(host.network.Address()),
+		replayedPayload,
+		forgedPayload,
+	} {
+		br, _ := bob.handleUpdateUser(mallory.network.Address(), signUpdateFor(mallory, attempt), false)
+		assert.True(t, br == nil, "forged or replayed addEncryptedDevice update must be rejected")
+	}
+
+	encryptedDeviceCacheMutex.Lock()
+	_, squatted := encryptedDeviceCache[host.network.Address()]
+	encryptedDeviceCacheMutex.Unlock()
+	assert.False(t, squatted, "Mallory must not be able to squat on Alice's encrypted device address")
+
+	// Alice's real update, carrying the host's signature for Alice's user ID, is accepted by Bob
+	br, _ := bob.handleUpdateUser(alice.network.Address(), alicesUpdate.getPayload(), false)
+	assert.True(t, br != nil)
+	encryptedDeviceCacheMutex.Lock()
+	owner, ok := encryptedDeviceCache[host.network.Address()]
+	encryptedDeviceCacheMutex.Unlock()
+	assert.True(t, ok)
+	assert.Equal(t, alice.currentUserID(), owner)
 }

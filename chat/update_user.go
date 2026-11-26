@@ -43,6 +43,7 @@ var updateUserTypeReplaceECDHPublicKey = uint16(6)
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
 var errInvalidKeyMaterial = errors.New("key material has the wrong size")
 var errInvalidAddress = errors.New("address is not a valid onion service id")
+var errInvalidEncryptedDeviceSignature = errors.New("invalid encrypted device binding signature")
 
 var onionAddressRegex = regexp.MustCompile(`^[a-z2-7]{56}$`)
 
@@ -153,9 +154,8 @@ func (uu *updateUser) validPayload() error {
 		_, err := IDFromBytes(uu.Data)
 		return err
 	case updateUserTypeAddEncryptedDevice:
-		if !onionAddressRegex.MatchString(string(uu.Data)) {
-			return errInvalidAddress
-		}
+		_, err := parseAddEncryptedDevicePayload(uu.Data)
+		return err
 	case updateUserTypeRemoveEncryptedDevice:
 		if !onionAddressRegex.MatchString(string(uu.Data)) {
 			return errInvalidAddress
@@ -198,6 +198,17 @@ func (uu *updateUser) validPayload() error {
 	}
 
 	return nil
+}
+
+func (b *Bounce) verifyAddEncryptedDeviceBinding(uu updateUser) (string, error) {
+	p, err := parseAddEncryptedDevicePayload(uu.Data)
+	if err != nil {
+		return "", err
+	}
+	if !b.network.VerifySignature(p.Address, encryptedDeviceBindingHash(p.Address, uu.Target), p.Signature) {
+		return "", errInvalidEncryptedDeviceSignature
+	}
+	return p.Address, nil
 }
 
 func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
@@ -324,6 +335,15 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 		}).Error("error validating update user payload")
 		return nil, false
 	}
+	if uu.Type == updateUserTypeAddEncryptedDevice {
+		if _, err = b.verifyAddEncryptedDeviceBinding(uu); err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": uu.Target,
+			}).Warn("rejecting add encrypted device update with invalid host binding signature")
+			return nil, false
+		}
+	}
 
 	// If we already hold the maximum history for this (target, type) and this frame is older than the oldest
 	// kept entry, it would be pruned immediately.  Ack so peers stop re-offering it and skip storing/replaying.
@@ -404,6 +424,11 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	err := uu.validPayload()
 	if err != nil {
 		return err
+	}
+	if uu.Type == updateUserTypeAddEncryptedDevice {
+		if _, err := b.verifyAddEncryptedDeviceBinding(uu); err != nil {
+			return err
+		}
 	}
 
 	// Store the last used name on the update if this update changes the name
@@ -591,7 +616,14 @@ func (b *Bounce) updateUserState(userID ID) {
 				imageIDs = append(imageIDs, imageID)
 			}
 		case updateUserTypeAddEncryptedDevice:
-			address := string(uu.Data)
+			address, err := b.verifyAddEncryptedDeviceBinding(uu)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"user_id": userID,
+				}).Error("refusing to add encrypted device with invalid binding signature")
+				continue
+			}
 			_, ok := b.getDeviceFromAddress(address)
 			if ok {
 				log.WithFields(log.Fields{
@@ -891,13 +923,20 @@ func (b *Bounce) UpdateProfileName(newName string) error {
 	})
 }
 
-func (b *Bounce) addEncryptedDevice(address string) error {
+func (b *Bounce) addEncryptedDevice(address string, signature []byte) error {
+	payload, err := msgpack.Marshal(addEncryptedDevicePayload{
+		Address:   address,
+		Signature: signature,
+	})
+	if err != nil {
+		return err
+	}
 	return b.applyAndBroadcastUpdateUser(updateUser{
 		Nonce:     newNonce(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeAddEncryptedDevice,
-		Data:      []byte(address),
+		Data:      payload,
 	})
 }
 
