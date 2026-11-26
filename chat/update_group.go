@@ -55,8 +55,12 @@ var errUpdateNotApplied = errors.New("update could not be applied")
 var errGroupNotFound = errors.New("group not found")
 var errUserNotInGroup = errors.New("user is not in group")
 
-var maximumUnverifiedUpdateGroupsPerSigner = int64(100)
+var maximumUnverifiedUpdateGroupsPerPeer = int64(100)
+var maximumUnverifiedUpdateGroupBytesPerPeer = int64(4 * 1024 * 1024)
 var maximumUnverifiedUpdateGroups = int64(1000)
+var maximumUnverifiedUpdateGroupBytes = int64(32 * 1024 * 1024)
+var maximumUnappliedUpdateGroupsPerActor = int64(100)
+var maximumUnappliedUpdateGroupBytesPerActor = int64(2 * 1024 * 1024)
 var unverifiedUpdateGroupLifetime = 24 * time.Hour
 
 var errAdminRequired = errors.New("this action can only be performed by admins")
@@ -80,9 +84,10 @@ type updateGroup struct {
 	Data          []byte
 	CustomScope   ID `msgpack:"-"`
 	Confirmations []confirmation
-	Applied       bool `msgpack:"-"`
-	Notified      bool `msgpack:"-"`
-	Seen          bool `msgpack:"-"`
+	Applied       bool   `msgpack:"-"`
+	Notified      bool   `msgpack:"-"`
+	Seen          bool   `msgpack:"-"`
+	ServedBy      string `msgpack:"-"`
 }
 
 func (ug *updateGroup) getNonce() nonce {
@@ -252,7 +257,10 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		}
 		var u user
 		err := msgpack.Unmarshal(ug.Data, &u)
-		return err == nil
+		if err != nil {
+			return false
+		}
+		return validUserRecord(u) == nil
 	case updateGroupTypeRemoveUser:
 		_, err := IDFromBytes(ug.Data)
 		return err == nil
@@ -323,6 +331,14 @@ func (ug *updateGroup) validPayloadFormat() bool {
 }
 
 func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	if len(payload) > maximumUpdateGroupFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring update group larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -345,6 +361,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	ug.OriginalPayload = sc.Payload
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
+	ug.ServedBy = peer
 
 	// Validate that the ID is generated from the content
 	if !idMatchesContent(&ug) {
@@ -432,15 +449,63 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		return nil, false
 	}
 
-	// Limit the amount of updates that come from unknown devices or target unknown groups, in order
-	// to limit the effect of resource exhaustion attacks
-	if (!signerKnown || !b.haveGroupCreation(ug.Target)) && !b.unverifiedUpdateGroupAllowed(ug.Signer) {
-		log.WithFields(log.Fields{
-			"id":     ug.ID,
-			"target": ug.Target,
-			"signer": ug.Signer,
-		}).Warn("dropping unverified update group because limit has been reached")
-		return nil, false
+	// Gate and bound unverified / non-participant update groups to prevent resource exhaustion and quota pinning.
+	haveCreation := b.haveGroupCreation(ug.Target)
+	incomingBytes := int64(len(ug.Data) + len(ug.OriginalPayload))
+
+	signerVerified := signerKnown
+	actorIsParticipant := false
+	hasStack := false
+	if haveCreation {
+		if stack, stackErr := b.currentGroupStack(ug.Target); stackErr == nil {
+			b.consensusStore.Lock()
+			if !signerVerified {
+				if mappedUser, ok := stack.addressMap[ug.Signer]; ok && mappedUser == ug.Actor {
+					signerVerified = true
+				}
+			}
+			if top, topErr := stack.top(); topErr == nil {
+				hasStack = true
+				actorIsParticipant = top.isMember(ug.Actor) || top.isInvited(ug.Actor)
+			}
+			b.consensusStore.Unlock()
+		}
+	}
+
+	if !haveCreation || !signerVerified {
+		// Unverified updates (no group creation held yet, or signer neither in devices nor verified in the
+		// group's stack) are only accepted from a transport-authenticated known, non-revoked, non-blocked peer.
+		// Checking stack.addressMap first still allows an unknown group creator/member to deliver a catch-up
+		// carrying a groupCreation + chain of invites ending in a known contact's invite to us.
+		peerDev, peerKnown := b.getDeviceFromAddress(peer)
+		if !peerKnown || peerDev.RevokedAt != 0 || blockedUser(peerDev.UserID) {
+			log.WithFields(log.Fields{
+				"id":     ug.ID,
+				"target": ug.Target,
+				"signer": ug.Signer,
+				"peer":   peer,
+			}).Warn("dropping unverified update group from unknown, revoked, or blocked peer")
+			return nil, false
+		}
+		if !b.unverifiedUpdateGroupAllowed(peer, incomingBytes) {
+			log.WithFields(log.Fields{
+				"id":     ug.ID,
+				"target": ug.Target,
+				"signer": ug.Signer,
+				"peer":   peer,
+			}).Warn("dropping unverified update group because limit has been reached")
+			return nil, false
+		}
+	} else if hasStack && !actorIsParticipant && !(signerKnown && signerDevice.UserID == b.currentUserID()) {
+		if !b.nonParticipantUpdateGroupAllowed(ug.Target, ug.Actor, incomingBytes) {
+			log.WithFields(log.Fields{
+				"id":     ug.ID,
+				"target": ug.Target,
+				"actor":  ug.Actor,
+				"signer": ug.Signer,
+			}).Warn("dropping unapplied update group from non-participant because limit has been reached")
+			return nil, false
+		}
 	}
 
 	// Save this update
@@ -550,45 +615,145 @@ func (b *Bounce) haveGroupCreation(groupID ID) bool {
 	return count > 0
 }
 
-// Check if our quota for unverified update groups has been reached, for this signer or globally
-func (b *Bounce) unverifiedUpdateGroupAllowed(signer string) bool {
-	var bySigner int64
-	var total int64
+type updateGroupUsage struct {
+	Count int64
+	Bytes int64
+}
+
+// updateGroupIsPruneExempt reports whether an unverified or unapplied update group must not be evicted or pruned.
+// Exemptions are gated on authenticated device ownership so an unknown signer cannot forge an exemption by setting
+// Actor or InviteUser.Data to our user ID.
+func (b *Bounce) updateGroupIsPruneExempt(ug updateGroup, myID ID, haveCreation bool) bool {
+	if ug.CustomScope != NilID {
+		return true
+	}
+	signerDev, signerKnown := b.getDeviceFromAddress(ug.Signer)
+	if !signerKnown {
+		return false
+	}
+	if ug.Actor == myID && signerDev.UserID == myID {
+		return true
+	}
+	if !haveCreation && ug.Type == updateGroupTypeInviteUser {
+		var invited user
+		if msgpack.Unmarshal(ug.Data, &invited) == nil && invited.ID == myID {
+			return true
+		}
+	}
+	return false
+}
+
+// unverifiedUpdateGroupAllowed checks the per-serving-peer and global quotas for unverified update groups.
+// If the global limit is full, it evicts the oldest non-exempt unverified rows (unknown-target first) so one or more
+// malicious peers cannot permanently pin the global quota against legitimate group joins.
+func (b *Bounce) unverifiedUpdateGroupAllowed(peer string, incomingBytes int64) bool {
+	unverifiedWhere := `custom_scope = ? AND (target NOT IN (SELECT id FROM group_creations) OR (applied = ? AND signer NOT IN (SELECT address FROM devices)))`
+
+	var byPeer updateGroupUsage
 	err := b.database.
 		Model(&updateGroup{}).
-		Where(
-			`(
-				target NOT IN (
-					SELECT id FROM group_creations
-				) OR (
-					applied = ?
-					AND
-					signer NOT IN (SELECT address FROM devices))
-			) AND signer = ?`,
-			false,
-			signer,
-		).Count(&bySigner).Error
-	if err == nil {
-		err = b.database.
-			Model(&updateGroup{}).
-			Where(
-				`target NOT IN (
-					SELECT id FROM group_creations
-				) OR (
-					applied = ?
-					AND
-					signer NOT IN (SELECT address FROM devices)
-				)`,
-				false,
-			).Count(&total).Error
+		Select("COUNT(*) AS count, COALESCE(SUM(LENGTH(data) + LENGTH(original_payload)), 0) AS bytes").
+		Where(unverifiedWhere+" AND served_by = ?", NilID, false, peer).
+		Scan(&byPeer).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error counting unverified update groups for peer")
 	}
+	if byPeer.Count >= maximumUnverifiedUpdateGroupsPerPeer || byPeer.Bytes+incomingBytes > maximumUnverifiedUpdateGroupBytesPerPeer {
+		return false
+	}
+
+	var total updateGroupUsage
+	err = b.database.
+		Model(&updateGroup{}).
+		Select("COUNT(*) AS count, COALESCE(SUM(LENGTH(data) + LENGTH(original_payload)), 0) AS bytes").
+		Where(unverifiedWhere, NilID, false).
+		Scan(&total).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error counting unverified update groups")
 	}
+	if total.Count < maximumUnverifiedUpdateGroups && total.Bytes+incomingBytes <= maximumUnverifiedUpdateGroupBytes {
+		return true
+	}
 
-	return bySigner < maximumUnverifiedUpdateGroupsPerSigner && total < maximumUnverifiedUpdateGroups
+	type evictCandidate struct {
+		ID          ID
+		Actor       ID
+		Target      ID
+		Type        uint16
+		Data        []byte
+		Signer      string
+		CustomScope ID
+		RowBytes    int64
+	}
+	var candidates []evictCandidate
+	err = b.database.
+		Model(&updateGroup{}).
+		Select("id, actor, target, type, data, signer, custom_scope, LENGTH(data) + LENGTH(original_payload) AS row_bytes").
+		Where(unverifiedWhere, NilID, false).
+		Order("CASE WHEN target NOT IN (SELECT id FROM group_creations) THEN 0 ELSE 1 END ASC, saved_at ASC, rowid ASC").
+		Find(&candidates).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting unverified update groups to evict")
+	}
+
+	myID := b.currentUserID()
+	creationCache := map[ID]bool{}
+	for _, cand := range candidates {
+		if total.Count < maximumUnverifiedUpdateGroups && total.Bytes+incomingBytes <= maximumUnverifiedUpdateGroupBytes {
+			break
+		}
+		haveCreation, cached := creationCache[cand.Target]
+		if !cached {
+			haveCreation = b.haveGroupCreation(cand.Target)
+			creationCache[cand.Target] = haveCreation
+		}
+		ug := updateGroup{
+			SignedFrame: SignedFrame{Signer: cand.Signer},
+			ID:          cand.ID,
+			Actor:       cand.Actor,
+			Target:      cand.Target,
+			Type:        cand.Type,
+			Data:        cand.Data,
+			CustomScope: cand.CustomScope,
+		}
+		if b.updateGroupIsPruneExempt(ug, myID, haveCreation) {
+			continue
+		}
+		if err = b.database.Delete(&ug).Error; err != nil {
+			log.WithFields(log.Fields{
+				"id":    cand.ID,
+				"error": err.Error(),
+			}).Error("error evicting unverified update group")
+			continue
+		}
+		total.Count--
+		total.Bytes -= cand.RowBytes
+	}
+
+	return total.Count < maximumUnverifiedUpdateGroups && total.Bytes+incomingBytes <= maximumUnverifiedUpdateGroupBytes
+}
+
+// nonParticipantUpdateGroupAllowed caps unapplied update groups stored for a known group from an actor who is not
+// currently a member or invitee (e.g. a removed member).
+func (b *Bounce) nonParticipantUpdateGroupAllowed(target ID, actor ID, incomingBytes int64) bool {
+	var usage updateGroupUsage
+	err := b.database.
+		Model(&updateGroup{}).
+		Select("COUNT(*) AS count, COALESCE(SUM(LENGTH(data) + LENGTH(original_payload)), 0) AS bytes").
+		Where("target = ? AND actor = ? AND applied = ? AND custom_scope = ?", target, actor, false, NilID).
+		Scan(&usage).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error counting unapplied update groups for non-participant")
+	}
+	return usage.Count < maximumUnappliedUpdateGroupsPerActor && usage.Bytes+incomingBytes <= maximumUnappliedUpdateGroupBytesPerActor
 }
 
 func (b *Bounce) processEarlyConfirmations(ug updateGroup) {

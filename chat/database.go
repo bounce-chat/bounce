@@ -321,6 +321,9 @@ func (b *Bounce) pruneUndeliverableCustomScopes() {
 }
 
 func (b *Bounce) pruneUnverifiedUpdateGroups() {
+	groupMutex.Lock()
+	defer groupMutex.Unlock()
+
 	me, ok := b.currentUser()
 	if !ok {
 		return
@@ -328,33 +331,52 @@ func (b *Bounce) pruneUnverifiedUpdateGroups() {
 
 	cutoff := time.Now().Unix() - int64(unverifiedUpdateGroupLifetime.Seconds())
 	var orphans []updateGroup
-	err := b.database.Where(
-		`saved_at < ?
-		 AND
-		 (target NOT IN
-			(SELECT id FROM group_creations)
-			OR
-			(applied = ? AND signer NOT IN (SELECT address FROM devices))
-		)`,
-		cutoff,
-		false,
-	).Find(&orphans).Error
+	err := b.database.
+		Select("id", "actor", "target", "type", "data", "signer", "custom_scope").
+		Where(
+			`saved_at < ?
+			 AND custom_scope = ?
+			 AND (target NOT IN (SELECT id FROM group_creations) OR applied = ?)`,
+			cutoff,
+			NilID,
+			false,
+		).Find(&orphans).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up unverified update groups")
 	}
 
+	creationCache := map[ID]bool{}
+	stateCache := map[ID]*groupState{}
 	for _, ug := range orphans {
-		if ug.Actor == me.ID {
+		haveCreation, cached := creationCache[ug.Target]
+		if !cached {
+			haveCreation = b.haveGroupCreation(ug.Target)
+			creationCache[ug.Target] = haveCreation
+		}
+
+		if b.updateGroupIsPruneExempt(ug, me.ID, haveCreation) {
 			continue
 		}
-		if ug.Type == updateGroupTypeInviteUser {
-			var invited user
-			if msgpack.Unmarshal(ug.Data, &invited) == nil && invited.ID == me.ID {
-				continue
+
+		// For a known group whose signer is known, keep unapplied updates authored by current members or invitees
+		// (e.g. updates rolled back by consensus); prune updates authored by non-participants (e.g. removed members).
+		if haveCreation {
+			if _, signerKnown := b.getDeviceFromAddress(ug.Signer); signerKnown {
+				topState, stateCached := stateCache[ug.Target]
+				if !stateCached {
+					if gs, gsErr := b.currentGroupState(ug.Target); gsErr == nil {
+						topState = &gs
+					}
+					stateCache[ug.Target] = topState
+				}
+				if topState != nil && (topState.isMember(ug.Actor) || topState.isInvited(ug.Actor)) {
+					continue
+				}
 			}
 		}
+
 		err = b.database.Delete(&ug).Error
 		if err != nil {
 			log.WithFields(log.Fields{

@@ -65,9 +65,14 @@ func (b *Bounce) reloadGroupConsensus(groupID ID) error {
 	}
 	cs := newCanonicalStack(initialState, addressMap, revokedMap, groupID, b.currentUserID())
 
-	// Get all update groups for this group
+	// Get all update groups for this group (omit OriginalPayload and Signature which replay never reads)
 	var ugs []updateGroup
-	err = b.database.Preload(clause.Associations).Where("target = ? AND custom_scope = ?", groupID, NilID).Order("timestamp asc, id").Find(&ugs).Error
+	err = b.database.
+		Select("id", "actor", "target", "timestamp", "type", "data", "custom_scope", "applied", "notified", "seen", "signer").
+		Preload("Confirmations").
+		Where("target = ? AND custom_scope = ?", groupID, NilID).
+		Order("timestamp asc, id").
+		Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -118,9 +123,14 @@ func (b *Bounce) reloadGroupConsensusSince(groupID ID, ts int64) error {
 	// Recompute the device maps for the pruned history
 	b.recomputeDeviceMaps(stack)
 
-	// Load all updates that are timestamp or newer from the database
+	// Load all updates that are timestamp or newer from the database (omit OriginalPayload and Signature)
 	var ugs []updateGroup
-	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, NilID).Order("timestamp asc, id").Find(&ugs).Error
+	err := b.database.
+		Select("id", "actor", "target", "timestamp", "type", "data", "custom_scope", "applied", "notified", "seen", "signer").
+		Preload("Confirmations").
+		Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, NilID).
+		Order("timestamp asc, id").
+		Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -152,9 +162,9 @@ func (b *Bounce) writeGroupConsensus(groupID ID) error {
 		return errors.New("cannot write group consensus for group without a history stack")
 	}
 
-	// Get all update groups for this group
+	// Get all update groups for this group (setRollbacksApplicationsAndGroupState only reads id, applied, notified)
 	var ugs []updateGroup
-	err := b.database.Find(&ugs, "target = ?", groupID).Error
+	err := b.database.Select("id", "applied", "notified").Where("target = ?", groupID).Find(&ugs).Error
 	if err != nil {
 		b.consensusStore.Unlock()
 		log.WithFields(log.Fields{
