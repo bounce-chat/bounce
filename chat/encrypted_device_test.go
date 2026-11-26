@@ -745,3 +745,95 @@ func TestAHostFetchesAPeersChunksOneAfterAnother(t *testing.T) {
 	}
 	assert.Equal(t, int64(3), countWhere(t, host, &encryptedChunkStorageRequest{}, "downloaded = ?", true))
 }
+
+// A handler does not wait on the peer it is answering.  A peer that has stopped reading has a full queue, a send to
+// it waits for as long as the queue stays full, and a handler that waited with it would hold its slot, and with
+// enough of them everyone else's, for the whole of that time.
+func TestHandlersDoNotWaitOnAPeerThatHasStoppedReading(t *testing.T) {
+	_, bob := connectUsers(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+
+	// stoppedReading gives an engine a connected peer whose queue is full and that nothing is writing to
+	stoppedReading := func(b *Bounce) string {
+		peer := newTestnet().Address()
+		ours, _ := net.Pipe()
+		rd := b.getRemoteDevice(peer)
+		rd.Lock()
+		rd.sockets = []*socket{{underlying: ours, alive: true, lastRead: time.Now(), closer: make(chan struct{})}}
+		rd.Unlock()
+		for len(rd.messages) < cap(rd.messages) {
+			rd.messages <- &keepAlive{}
+		}
+		t.Cleanup(func() { drain(rd.messages) })
+		return peer
+	}
+	hostPeer := stoppedReading(host)
+	bobPeer := stoppedReading(bob)
+
+	clear, err := msgpack.Marshal(encryptedClearBefore{ID: NewID(), Labels: [][]byte{randomTestBytes(mailboxLabelSize)}})
+	assert.NoError(t, err)
+	_, challengeKey := eroChallengeKey()
+	// In this order: the mailbox request is what gives the device something to answer the request after it with
+	handlers := []struct {
+		of     string
+		handle func()
+	}{
+		{"a clear before", func() {
+			host.handleEncryptedClearBefore(hostPeer, clear, false)
+		}},
+		{"a mailbox request", func() {
+			host.handleMailboxRequest(hostPeer, (&mailboxRequest{Labels: [][]byte{randomTestBytes(mailboxLabelSize)}}).getPayload(), false)
+		}},
+		{"a request for a storage reference offer", func() {
+			host.handleRequestECRO(hostPeer, nil, false)
+		}},
+		{"a request for the management key hash", func() {
+			host.handleGetManagementKeyHash(hostPeer, nil, false)
+		}},
+		{"a reference offer challenge", func() {
+			bob.handleEncryptedReferenceOfferChallenge(bobPeer, (&encryptedReferenceOfferChallenge{Key: challengeKey, Challenge: randomTestBytes(32)}).getPayload(), false)
+		}},
+		{"an encrypted catch up", func() {
+			bob.handleEncryptedCatchUp(bobPeer, (&encryptedCatchUp{}).getPayload(), false)
+		}},
+		{"an encrypted chunk offer for a chunk we do not know", func() {
+			unknown := encryptedChunkOfferFrom(t, bob, "4444444444444444444444444444444444444444444444444444444444444444")
+			bob.handleEncryptedChunkOffer(bobPeer, unknown.getPayload(), false)
+		}},
+	}
+	for _, handler := range handlers {
+		returned := make(chan struct{})
+		go func() {
+			handler.handle()
+			close(returned)
+		}()
+		select {
+		case <-returned:
+		case <-time.After(2 * time.Second):
+			t.Errorf("the handler for %s waited on a peer that is not reading", handler.of)
+		}
+	}
+}
+
+// An encrypted device is renamed by an update that carries its address and its new name with a colon between them.
+// The address ends at the first colon, so the name is free to have colons of its own.
+func TestAnEncryptedDeviceIsGivenANameWithAColonInIt(t *testing.T) {
+	_, bob := connectUsers(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+
+	var esd encryptedSyncDevice
+	assert.NoError(t, bob.database.First(&esd, "address = ?", host.network.Address()).Error)
+	assert.NoError(t, bob.RenameDevice(esd.ID, "attic: the old laptop"))
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		assert.NoError(t, bob.database.First(&esd, "address = ?", host.network.Address()).Error)
+		if esd.Name == "attic: the old laptop" {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, "attic: the old laptop", esd.Name)
+}

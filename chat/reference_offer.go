@@ -1485,7 +1485,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		// not answered with another mailbox request.
 		go b.sendAck(peer, typeReferenceOffer, ro.ID)
 		b.getManagementKeyHash(peer)
-		b.sendEncryptedClearBefores(peer)
+		go b.sendEncryptedClearBefores(peer)
 		return nil, false
 	}
 

@@ -754,7 +754,7 @@ func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
 		}
 		rd := b.getRemoteDevice(peer)
 		if rd.connectedSockets() > 0 {
-			b.sendDirect(peer, encryptedReceive{
+			go b.sendDirect(peer, encryptedReceive{
 				ID:         ef.ID,
 				Payload:    ef.Payload,
 				Label:      entry.Label,
@@ -805,7 +805,7 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 		}
 	}
 	if len(labels) == 0 {
-		b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
+		go b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
 		return nil, false
 	}
 
@@ -836,7 +836,7 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 	}
 
 	b.recheckUntrustedEncryptedFrameStorage()
-	b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
+	go b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
 
 	return nil, false
 }
@@ -1000,7 +1000,7 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 	)
 	ciphertext := dekGCM.Seal(nil, []byte{}, eroc.Challenge, session)
 
-	b.sendDirect(peer, &encryptedReferenceOfferResponse{
+	go b.sendDirect(peer, &encryptedReferenceOfferResponse{
 		PublicKey: currentUser.PublicECDHKey,
 		Response:  ciphertext,
 	})
@@ -1443,7 +1443,7 @@ func (b *Bounce) handleGetManagementKeyHash(peer string, payload []byte, _ bool)
 		return nil, false
 	}
 
-	b.sendDirect(peer, &managementKeyHashResponse{Hash: hashString(blake3.Sum256(au.SigningKey))})
+	go b.sendDirect(peer, &managementKeyHashResponse{Hash: hashString(blake3.Sum256(au.SigningKey))})
 
 	return nil, false
 }
@@ -1537,7 +1537,7 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 			Signature: signature,
 		}
 
-		b.sendDirect(peer, &med)
+		go b.sendDirect(peer, &med)
 
 		b.updateManageableWarning(peer, true)
 	} else {

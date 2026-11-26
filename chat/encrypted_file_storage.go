@@ -123,7 +123,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 
 		// A second offer of a chunk at a location we already know of tells us nothing new.  It is not kept, and it is
 		// acked by its own ID so that the peer stops sending it.
-		b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
+		go b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 		return nil, false
 	}
 
@@ -135,7 +135,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 				"hash": eco.Hash,
 				"peer": peer,
 			}).Error("received encrypted chunk offer for unknown chunk")
-			b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
+			go b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
@@ -155,7 +155,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 				"hash": eco.Hash,
 				"peer": peer,
 			}).Error("received encrypted chunk offer for chunk with no file")
-			b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
+			go b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
@@ -346,7 +346,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 			log.WithFields(log.Fields{
 				"address": peer,
 			}).Warn("could not determine owner of encrypted device that sent encrypted storage reference offer")
-			b.sendDirect(peer, esrr)
+			go b.sendDirect(peer, esrr)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
@@ -402,7 +402,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		}
 	}
 
-	b.sendDirect(peer, esrr)
+	go b.sendDirect(peer, esrr)
 
 	return nil, false
 }
@@ -451,7 +451,7 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			}
 		}
 
-		b.sendDirect(peer, &eco)
+		go b.sendDirect(peer, &eco)
 	}
 
 	stored := false
@@ -508,11 +508,9 @@ func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
 		}
 	}
 
-	err := tx.Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
-	if err != nil {
-		return err
-	}
-	return tx.Where("frame_id = ? AND frame_type = ?", ecsr.ID, typeEncryptedChunkStorageRequest).Delete(&deliveryRecord{}).Error
+	// A storage request has no delivery records to go with it.  It is kept under an ID this device gave it and is
+	// never acked: a device that wants a chunk stored asks again through the storage reference flow.
+	return tx.Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
 }
 
 func (ecsr encryptedChunkStorageRequest) getType() uint16 {
@@ -731,7 +729,7 @@ func (recro requestECRO) getPayload() []byte {
 }
 
 func (b *Bounce) handleRequestECRO(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	b.sendEncryptedStorageReferenceOffer(peer)
+	go b.sendEncryptedStorageReferenceOffer(peer)
 	return nil, false
 }
 

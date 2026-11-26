@@ -863,8 +863,8 @@ func (b *Bounce) handleMailboxRequest(peer string, payload []byte, _ bool) (broa
 	// from anyone
 	b.registerOwnerMailboxes(peer)
 
-	b.sendDirect(peer, b.hostOfferFor(peer))
-	b.sendEncryptedStorageReferenceOffer(peer)
+	go b.sendDirect(peer, b.hostOfferFor(peer))
+	go b.sendEncryptedStorageReferenceOffer(peer)
 	return nil, false
 }
 

@@ -119,7 +119,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 	}
 
 	b.applyCatchUp(peer, cu, hostCopies)
-	b.sendDirect(peer, requestECRO{})
+	go b.sendDirect(peer, requestECRO{})
 	return nil, false
 }
 
