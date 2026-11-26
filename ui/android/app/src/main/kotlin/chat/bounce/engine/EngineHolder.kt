@@ -139,15 +139,17 @@ object EngineHolder {
             Goengine.reset(Goengine.defaultConfigDir())
 
             // The engine's own directory is gone. These are the copies of
-            // attachments the app made outside it: large ones it received, and
-            // ones an earlier version staged in its cache before sending.
+            // attachments earlier versions of the app made outside it: large
+            // ones they received, and ones they staged in the cache before
+            // sending.
             File(app.filesDir, "downloads").deleteRecursively()
             File(app.cacheDir, "outgoing").deleteRecursively()
 
             // And the permissions kept so that large files could be served
-            // from where the user keeps them. No message refers to them now.
+            // from where the user keeps them, or downloaded to where the user
+            // wanted them. No message refers to them now.
             runCatching {
-                app.contentResolver.persistedUriPermissions.forEach { app.contentResolver.releaseRead(it.uri) }
+                app.contentResolver.persistedUriPermissions.forEach { app.contentResolver.releasePersisted(it.uri) }
             }.onFailure { Log.w(TAG, "could not give back file permissions", it) }
 
             // And the launcher's shortcuts, which carry the names and pictures

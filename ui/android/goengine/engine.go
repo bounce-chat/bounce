@@ -1012,9 +1012,9 @@ func (a *Engine) BlobPath(fileID string) string {
 
 // GetFilePath is where a downloaded file actually is, whatever its size.
 //
-// For a large file this device sent, that is the location it was attached
-// from, which is a content URI when it is served in place: check for the
-// content:// scheme before treating the result as a path.
+// For a large file that is the location it was attached from or downloaded
+// to, which is a content URI: check for the content:// scheme before treating
+// the result as a path.
 //
 // Returns an error until the download finishes. BLOCKING: one database read.
 func (a *Engine) GetFilePath(fileID string) (string, error) {
@@ -1079,6 +1079,14 @@ func (a *Engine) FileWanted(fileID string) (bool, error) {
 	return e.FileWanted(id), nil
 }
 
+// DownloadFileToDisk starts downloading a file too large to embed into the
+// place the user picked for it, and returns at once: progress and completion
+// arrive as events.
+//
+// The destination is the content URI of a document the user created, which the
+// engine writes into through the FileStore for as long as the download takes.
+// The caller must hold the persistable permission to read and write it before
+// calling. The file stays there when its message is deleted.
 func (a *Engine) DownloadFileToDisk(fileID string, destination string) error {
 	e, err := a.engine()
 	if err != nil {

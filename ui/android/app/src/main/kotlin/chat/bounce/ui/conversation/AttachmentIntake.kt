@@ -159,8 +159,12 @@ internal fun takeAttachment(context: Context, uri: Uri, shared: Boolean): Intake
  * missing from this list costs storage, never a broken attachment. Google Drive
  * is deliberately not here: it keeps its permission too, but takes seconds to
  * open a file and writes out a temporary copy of its own each time.
+ *
+ * The same list decides where a large file may be downloaded to (see
+ * takeDownloadDestination), because a download is served to others from where
+ * it lands, exactly as an attachment is.
  */
-private fun staysReadable(uri: Uri): Boolean {
+internal fun staysReadable(uri: Uri): Boolean {
     if (uri.scheme != ContentResolver.SCHEME_CONTENT) return false
     return when (uri.authority) {
         DOWNLOADS_AUTHORITY, EXTERNAL_STORAGE_AUTHORITY -> true

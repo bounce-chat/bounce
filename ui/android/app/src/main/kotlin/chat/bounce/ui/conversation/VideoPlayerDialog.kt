@@ -59,8 +59,8 @@ import chat.bounce.R
  * MediaPlayer sniffs the container rather than trusting the file name.
  *
  * @param path where the engine says the file is: an absolute path in
- *   app-private storage, or for a large video this device sent, the content URI
- *   it was attached from. VideoView takes either.
+ *   app-private storage, or for a large video, the content URI it was attached
+ *   from or downloaded to. VideoView takes either.
  * @param title the attachment's filename, shown in the header.
  */
 @Composable

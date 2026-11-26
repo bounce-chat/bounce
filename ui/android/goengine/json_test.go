@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/platform"
 )
 
 // The Kotlin layer parses every engine event with kotlinx.serialization, so the
@@ -249,6 +250,7 @@ func TestPrepareAttachmentsTrustsTheFileOverTheSizeItWasGiven(t *testing.T) {
 // pipeFiles hands out the reading end of a pipe, as a provider that produces a
 // file while it is being read does. A pipe has no size and cannot seek.
 type pipeFiles struct {
+	platform.LocalFiles
 	data []byte
 }
 
@@ -308,6 +310,8 @@ type kotlinFiles struct {
 	uri      string
 	path     string
 	opened   []string
+	created  []string
+	removed  []string
 	released []string
 }
 
@@ -327,6 +331,24 @@ func (k *kotlinFiles) Open(uri string) (int32, error) {
 	}
 	handedOver = append(handedOver, f)
 	return int32(f.Fd()), nil
+}
+
+func (k *kotlinFiles) Create(uri string) (int32, error) {
+	k.created = append(k.created, uri)
+	if uri != k.uri {
+		return 0, errors.New("SecurityException: no permission to write")
+	}
+	f, err := os.OpenFile(k.path, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return 0, err
+	}
+	handedOver = append(handedOver, f)
+	return int32(f.Fd()), nil
+}
+
+func (k *kotlinFiles) Remove(uri string) error {
+	k.removed = append(k.removed, uri)
+	return os.Remove(k.path)
 }
 
 func (k *kotlinFiles) Release(location string) error {
@@ -383,5 +405,81 @@ func TestContentURIsAreOpenedByKotlinAndPathsAreNot(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("releasing a location never deletes anything on this side")
+	}
+}
+
+func TestADownloadToAContentURIIsWrittenThroughKotlinIntoTheDocumentItself(t *testing.T) {
+	directory := t.TempDir()
+	document := filepath.Join(directory, "saved.bin")
+	kotlin := &kotlinFiles{uri: "content://com.android.providers.downloads.documents/document/msf%3A31", path: document}
+	files := boundFileStore{store: kotlin}
+
+	// Nothing can be made beside a document, so the download has no partial file of its own
+	if partial := files.Partial(kotlin.uri); partial != kotlin.uri {
+		t.Fatalf("a download to a content URI is written into the document itself, got %q", partial)
+	}
+
+	// Chunks arrive in any order, each opening the document again and writing at its own offset
+	for _, chunk := range []struct {
+		offset int64
+		data   string
+	}{{6, "second"}, {0, "first "}} {
+		f, err := files.Create(kotlin.uri)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteAt([]byte(chunk.data), chunk.offset); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	written, err := os.ReadFile(document)
+	if err != nil || string(written) != "first second" {
+		t.Fatalf("the document holds %q, error %v", written, err)
+	}
+	if len(kotlin.created) != 2 {
+		t.Fatalf("each chunk opens the document through Kotlin, got %v", kotlin.created)
+	}
+
+	// A cancelled download removes the document, through Kotlin, which is what holds the permission to
+	if err := files.Remove(kotlin.uri); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(document); !os.IsNotExist(err) {
+		t.Fatalf("the document should be gone, got %v", err)
+	}
+	if len(kotlin.removed) != 1 || kotlin.removed[0] != kotlin.uri {
+		t.Fatalf("removed %v", kotlin.removed)
+	}
+
+	// A path is a file an earlier version downloaded into the app's own storage, and is reached without Kotlin
+	path := filepath.Join(directory, "earlier.bin")
+	if partial := files.Partial(path); partial != path+".bouncedownload" {
+		t.Fatalf("a download to a path keeps its partial file beside it, got %q", partial)
+	}
+	f, err := files.Create(files.Partial(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if err := files.Rename(files.Partial(path), path); err != nil {
+		t.Fatal(err)
+	}
+	if err := files.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if len(kotlin.created) != 2 || len(kotlin.removed) != 1 {
+		t.Fatalf("a path must not cross to Kotlin, created %v, removed %v", kotlin.created, kotlin.removed)
+	}
+
+	// A URI that cannot be written is an error, and so is any URI on a host with no store
+	if _, err := files.Create("content://com.android.providers.downloads.documents/document/gone"); err == nil {
+		t.Fatal("expected Kotlin's failure to open the URI for writing")
+	}
+	if _, err := (boundFileStore{}).Create(kotlin.uri); err == nil {
+		t.Fatal("expected an error with no store to write the URI")
+	}
+	if err := (boundFileStore{}).Remove(kotlin.uri); err == nil {
+		t.Fatal("expected an error with no store to remove the URI")
 	}
 }

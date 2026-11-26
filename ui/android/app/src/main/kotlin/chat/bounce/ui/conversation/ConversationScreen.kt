@@ -87,6 +87,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -248,6 +249,21 @@ fun ConversationScreen(
         }
     }
 
+    // The large file waiting for the user to say where it should be downloaded
+    // to. Saveable, because the save dialog is another app's screen and this
+    // one can be torn down while it is open.
+    var pendingDownload by rememberSaveable { mutableStateOf<String?>(null) }
+    val downloadPlaceUnusable = stringResource(R.string.conv_download_place_unusable)
+    val downloadLauncher = rememberLauncherForActivityResult(CreateLocalDocument()) { destination ->
+        val fileId = pendingDownload
+        pendingDownload = null
+        if (destination != null && fileId != null) {
+            viewModel.downloadFile(fileId, destination) {
+                scope.launch { snackbars.showSnackbar(downloadPlaceUnusable, duration = SnackbarDuration.Long) }
+            }
+        }
+    }
+
     // The video the user tapped and the blob backing it, or null.
     var playingVideo by remember { mutableStateOf<Pair<FileAttachment, String>?>(null) }
 
@@ -336,7 +352,10 @@ fun ConversationScreen(
                                 onAuthorClick = { authorId ->
                                     cardFor = state.users[authorId]
                                 },
-                                onDownloadFile = { viewModel.downloadFile(it.id, it.name) },
+                                onDownloadFile = {
+                                    pendingDownload = it.id
+                                    downloadLauncher.launch(it.name)
+                                },
                                 onCancelDownload = { viewModel.cancelDownload(it.id) },
                                 onPlayVideo = { file, path -> playingVideo = file to path },
                                 onCopyText = { text ->

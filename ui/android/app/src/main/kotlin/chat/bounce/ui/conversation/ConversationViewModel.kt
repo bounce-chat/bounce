@@ -24,7 +24,7 @@ import chat.bounce.engine.ImageAttachment
 import chat.bounce.engine.Group
 import chat.bounce.engine.OutgoingAttachment
 import chat.bounce.engine.User
-import chat.bounce.engine.releaseRead
+import chat.bounce.engine.releasePersisted
 import chat.bounce.goengine.Goengine
 import chat.bounce.notifications.BounceMessageNotifier
 import kotlinx.coroutines.CoroutineScope
@@ -401,7 +401,7 @@ class ConversationViewModel(
      * finished with, through [ContentFileStore.release].
      */
     private fun giveBackPermission(attachment: PendingAttachment) {
-        if (attachment.tookPermission) appContext.contentResolver.releaseRead(attachment.uri)
+        if (attachment.tookPermission) appContext.contentResolver.releasePersisted(attachment.uri)
     }
 
     // --- reading -----------------------------------------------------------
@@ -458,16 +458,33 @@ class ConversationViewModel(
 
     // --- attachments -------------------------------------------------------
 
-    fun downloadFile(fileId: String, name: String) {
+    /**
+     * Downloads a file too large to embed into the document the user created
+     * for it with the system's save dialog.
+     *
+     * The engine writes each chunk straight into [destination] as it arrives
+     * and the file stays there, the user's own, when the message is deleted.
+     * Nothing is kept in the app's storage. [onRefused] is called when the
+     * place the user chose cannot be downloaded to; see
+     * [takeDownloadDestination].
+     */
+    fun downloadFile(fileId: String, destination: Uri, onRefused: () -> Unit) {
         viewModelScope.launch {
-            val client = engine() ?: return@launch
-            val destination = withContext(Dispatchers.IO) {
-                // Must match the files-path "downloads/" entry in file_paths.xml
-                // so the saved file can be shared out through the FileProvider.
-                val dir = File(appContext.filesDir, "downloads").apply { mkdirs() }
-                uniqueFile(dir, name).absolutePath
+            val client = engine()
+            val usable = client != null && withContext(Dispatchers.IO) {
+                // A provider answers these calls, and one that throws must not
+                // take the screen down with it.
+                runCatching { takeDownloadDestination(appContext, destination) }
+                    .onFailure { Log.w(TAG, "could not use a download destination, authority=${destination.authority}", it) }
+                    .getOrDefault(false)
             }
-            client.downloadFileToDisk(fileId, destination)
+            if (client == null || !usable) {
+                // The save dialog has already created the document, empty.
+                withContext(Dispatchers.IO) { discardDownloadDestination(appContext, destination) }
+                if (client != null) onRefused()
+                return@launch
+            }
+            client.downloadFileToDisk(fileId, destination.toString())
         }
     }
 
@@ -476,14 +493,15 @@ class ConversationViewModel(
      * picked.
      *
      * Deliberately not [downloadFile], which is a different operation despite
-     * the similar name: that one asks the engine to fetch a file from peers into
-     * the app's own storage so it can be rendered, and lands in filesDir where
-     * nothing outside the app can see it. Exporting has to go through a
-     * destination Uri from the system picker, because that is the only way an
-     * app holding no storage permission can write somewhere the user can find.
+     * the similar name: that one asks the engine to fetch a large file from
+     * peers, and what it writes is the only copy. This one copies a file that
+     * is already here: a small one out of the engine's own storage, or a large
+     * one to a second place. Both go through a destination Uri from the system
+     * picker, because that is the only way an app holding no storage permission
+     * can write somewhere the user can find.
      *
      * The source is wherever the engine says the file is, which for a large
-     * file this device sent is the place it was attached from.
+     * file is the place it was attached from or downloaded to.
      */
     fun exportAttachment(fileId: String, destination: Uri, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -563,8 +581,20 @@ class ConversationViewModel(
         }
     }
 
+    /**
+     * Stops a large download and removes what had arrived of it.
+     *
+     * The engine reports nothing when a download is cancelled, so the row is
+     * taken out of its downloading state here: before the call, so the tap is
+     * answered at once, and again after it, because a chunk that landed in
+     * between will have reported progress.
+     */
     fun cancelDownload(fileId: String) {
-        viewModelScope.launch { engine()?.cancelDownload(fileId) }
+        ChatRepository.clearFileProgress(fileId)
+        viewModelScope.launch {
+            engine()?.cancelDownload(fileId)
+            ChatRepository.clearFileProgress(fileId)
+        }
     }
 
     // --- thread management -------------------------------------------------
@@ -661,20 +691,6 @@ class ConversationViewModel(
         } else {
             File(location).inputStream()
         }
-
-    private fun uniqueFile(dir: File, name: String): File {
-        val safe = name.replace(Regex("[/\\\\:*?\"<>|]"), "_").ifBlank { "download" }
-        val base = safe.substringBeforeLast('.', safe)
-        val extension = safe.substringAfterLast('.', "")
-        var candidate = File(dir, safe)
-        var index = 1
-        while (candidate.exists()) {
-            val suffix = if (extension.isEmpty()) "" else ".$extension"
-            candidate = File(dir, "$base ($index)$suffix")
-            index++
-        }
-        return candidate
-    }
 
     private fun build(repo: RepoSlice, local: LocalSlice): ConversationUiState {
         val group = repo.group

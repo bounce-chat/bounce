@@ -19,7 +19,7 @@ func Get() chat.Platform {
 	return chat.Platform{
 		ConfigDirectory: configDirectory,
 		Secrets:         secretStoreFor(configDirectory),
-		Files:           localFiles{},
+		Files:           LocalFiles{},
 	}
 }
 
@@ -29,7 +29,7 @@ func GetEncrypted() chat.Platform {
 	return chat.Platform{
 		ConfigDirectory: configDirectory,
 		Secrets:         secretStoreFor(configDirectory),
-		Files:           localFiles{},
+		Files:           LocalFiles{},
 	}
 }
 

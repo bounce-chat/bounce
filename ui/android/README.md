@@ -149,11 +149,14 @@ the pieces that exist for the starts that do need something:
 Android's pickers hand out `content://` URIs, and nothing is copied when one is
 attached. The URI itself is the attachment's location: it crosses to Go in the
 send call, and Go asks Kotlin for a file descriptor each time it needs to read.
+A large file that is received works the same way in the other direction: the
+user picks where it goes, and Go writes it there through Kotlin.
 
-- **`ContentFileStore`** is that door. `open` returns a detached descriptor from
-  the ContentResolver, which Go wraps and closes; `release` is the engine saying
-  the last message served from a location is gone. Go calls both on its own
-  threads, several at once while chunks are being served.
+- **`ContentFileStore`** is that door. `open` and `create` return a detached
+  descriptor from the ContentResolver, to read or to write, which Go wraps and
+  closes; `remove` deletes a download that will never finish; `release` is the
+  engine saying the last message served from a location is gone. Go calls all of
+  them on its own threads, several at once while chunks are on the move.
 - **`takeAttachment`** decides, when a file is attached, what happens if it is
   over the engine's embed limit (`Goengine.EmbeddedFileLimit`). At or under the
   limit every file is read into the engine's `blobs/` when the message is sent.
@@ -164,11 +167,26 @@ send call, and Go asks Kotlin for a file descriptor each time it needs to read.
 | Google Drive, any other provider | Copied into `blobs/` when the message is sent, and deleted with the message. |
 | Another app's share sheet | Refused, with a message to attach it from inside Bounce. A share's access ends with the share. |
 
-Three things follow from this and are easy to trip over:
+A file over the limit that is received is not kept in the app's storage at all.
+Tapping Download opens the system's save dialog (`CreateLocalDocument`, which
+offers only places on the device), and `takeDownloadDestination` checks the
+document it returns and takes the lasting permission to read and write it.
+
+- **The download is written into that document as it arrives.** A content URI
+  names one document and nothing can be made beside it, so there is no
+  `.bouncedownload` file as there is on a desktop: until the last chunk lands,
+  the document the user sees is the partial file.
+- **Cancelling, or deleting the message first, deletes the document.** Once the
+  download has finished the file is the user's and is never deleted: deleting
+  the message only gives the permission back.
+- **The same providers qualify as for serving in place** (`staysReadable`),
+  because a finished download is served to others from where it landed.
+
+Three things follow from all this and are easy to trip over:
 
 - **A file's location is not always a path.** `EngineClient.filePath` returns
-  the content URI for a large file this device sent. Check for the `content://`
-  prefix before handing it to anything that wants a `File`.
+  the content URI for a large file, whether it was sent or received. Check for
+  the `content://` prefix before handing it to anything that wants a `File`.
 - **Android keeps at most 512 lasting permissions per app** and silently drops
   the oldest beyond that. A file whose permission is gone simply stops being
   served, the same as one the user moved or deleted.

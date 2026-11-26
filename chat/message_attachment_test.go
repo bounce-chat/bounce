@@ -303,12 +303,11 @@ func TestALargeAttachmentCanBeCopiedIntoTheBlobsDirectory(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(entries), "nothing is left of the temporary name the copy was written under")
 
-	// The copy is the engine's own, so it is read without the platform and deleted with its message
+	// The copy is the engine's own, so it is deleted with its message and the platform has nothing to give up
 	hashes := strings.Split(f.HashList, ",")
 	chunkData, err := me.getFileChunkData(f, hashes[1])
 	assert.NoError(t, err)
 	assert.Equal(t, data[fileChunkSize:2*fileChunkSize], chunkData)
-	assert.Equal(t, 0, files.opens(f.Path))
 	me.deleteGroupMessageAt(time.Now().Unix(), messageID)
 	_, err = os.Stat(f.Path)
 	assert.True(t, os.IsNotExist(err))

@@ -593,17 +593,37 @@ object ChatRepository {
         }
     }
 
+    /**
+     * How much of a large download has arrived. Never the whole of it: only
+     * [fileCompleted] says that.
+     *
+     * The engine reports the arrival of the last chunk before it has checked
+     * the finished file and recorded it as downloaded, and a bubble asks the
+     * engine whether its file is here each time this value changes. Were that
+     * report allowed to say 1.0, the bubble would ask too early and be told no,
+     * and [fileCompleted] setting 1.0 a moment later would change nothing, so
+     * it would never ask again: a finished download would sit there offering to
+     * be downloaded.
+     */
     fun setFileProgress(fileId: String, fraction: Double) {
-        _fileProgress.update { it + (fileId to fraction) }
+        _fileProgress.update { it + (fileId to fraction.coerceAtMost(LAST_CHUNK_ARRIVED)) }
     }
 
     /**
-     * The blob is now complete on disk. Nothing is evicted from [ImageCache]:
+     * A download was cancelled, so it is no longer under way. The engine sends
+     * no event for this, which is why the caller says so.
+     */
+    fun clearFileProgress(fileId: String) {
+        _fileProgress.update { it - fileId }
+    }
+
+    /**
+     * The file is now complete on disk. Nothing is evicted from [ImageCache]:
      * it only ever caches successful decodes, so a file that was missing was
      * never cached in the first place.
      */
     fun fileCompleted(fileId: String) {
-        setFileProgress(fileId, 1.0)
+        _fileProgress.update { it + (fileId to 1.0) }
     }
 
     // --- conversation items ----------------------------------------------------
@@ -1171,3 +1191,6 @@ private fun GroupActorUpdate.toSystemEvent(kind: SystemEventKind): ConversationI
     )
 
 private const val TAG = "BounceRepository"
+
+/** The most a download's progress can say before the engine reports the file complete. */
+private const val LAST_CHUNK_ARRIVED = 0.999

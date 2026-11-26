@@ -98,8 +98,8 @@ object VideoThumbnails {
      * which is normal rather than an error; that verdict is not cached, so the
      * next call after the transfer completes will look again.
      *
-     * [path] is wherever the engine says the file is. For a large file this
-     * device sent that is the content URI it was attached from, which is read
+     * [path] is wherever the engine says the file is. For a large file that is
+     * the content URI it was attached from or downloaded to, which is read
      * through [context].
      */
     suspend fun probe(context: Context, path: String, maxDimension: Int = 1024): VideoInfo? {
@@ -117,9 +117,10 @@ object VideoThumbnails {
                 // Stat inside the IO dispatch, not on the fast path above, so a
                 // recomposing bubble never touches the filesystem from the main
                 // thread.
-                // A content URI is a whole file the user already had, so there
-                // is no partial download to look at again and one fixed length
-                // remembers the verdict for good.
+                // A content URI is only handed over once its file is whole:
+                // one the user attached, or a download that has finished. So
+                // there is no partial download to look at again, and one fixed
+                // length remembers the verdict for good.
                 val length = if (path.startsWith(ContentFileStore.CONTENT_PREFIX)) {
                     CONTENT_LENGTH
                 } else {

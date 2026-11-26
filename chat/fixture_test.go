@@ -555,14 +555,19 @@ func (s *testSecretStore) Store(secret []byte) error {
 	return nil
 }
 
-// A testFileStore opens paths the way a desktop does and remembers what it was asked, so a test can tell which files
+// A testFileStore reaches paths the way a desktop does and remembers what it was asked, so a test can tell which files
 // the engine reached through the platform and which locations it said it was finished with.  Setting unreadable
-// makes every open fail the way a location does once the platform has lost its permission to read it.
+// makes every open fail the way a location does once the platform has lost its permission to read it.  Setting
+// inPlace makes it a platform that cannot keep a second file beside the one the user picked, as Android is, so a
+// download is written straight into its destination.
 type testFileStore struct {
 	sync.Mutex
 	opened     []string
+	renamed    []string
+	removed    []string
 	released   []string
 	unreadable error
+	inPlace    bool
 }
 
 func (s *testFileStore) Open(location string) (*os.File, error) {
@@ -573,6 +578,31 @@ func (s *testFileStore) Open(location string) (*os.File, error) {
 		return nil, s.unreadable
 	}
 	return os.Open(location)
+}
+
+func (s *testFileStore) Create(location string) (*os.File, error) {
+	return os.OpenFile(location, os.O_RDWR|os.O_CREATE, 0600)
+}
+
+func (s *testFileStore) Partial(location string) string {
+	if s.inPlace {
+		return location
+	}
+	return location + downloadExtension
+}
+
+func (s *testFileStore) Rename(from, to string) error {
+	s.Lock()
+	defer s.Unlock()
+	s.renamed = append(s.renamed, to)
+	return os.Rename(from, to)
+}
+
+func (s *testFileStore) Remove(location string) error {
+	s.Lock()
+	defer s.Unlock()
+	s.removed = append(s.removed, location)
+	return os.Remove(location)
 }
 
 func (s *testFileStore) Release(location string) error {

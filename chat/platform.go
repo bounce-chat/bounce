@@ -13,22 +13,41 @@ type Platform struct {
 	// Secrets is nil on a platform with no keystore
 	Secrets SecretStore
 
-	// Files reaches the files an install reads from where the user keeps them
+	// Files reaches the files an install reads and writes where the user keeps them
 	Files FileStore
 }
 
-// A FileStore reaches files that are not the engine's own.  A file too large to embed is not copied when it is sent:
-// its record keeps the location the user picked it from and it is served from there for as long as the record
-// lives.  A location is whatever the platform's file pickers hand out, a path on a desktop and a content URI on
-// Android, and it means nothing to any other platform.  What the engine keeps in its blobs directory never goes
-// through here.
+// A FileStore reaches the files an install reads and writes.  A file too large to embed is not copied when it is
+// sent: its record keeps the location the user picked it from and it is served from there for as long as the record
+// lives.  One that is received is downloaded straight into the location the user picked for it, and stays there.  A
+// location is whatever the platform's file pickers hand out, a path on a desktop and a content URI on Android, and
+// it means nothing to any other platform.  The engine's own blobs directory is reached through the same store, by
+// path, so every platform's store has to handle a path inside the config directory as well.
 type FileStore interface {
 	// Open opens the file at a location for reading.  It is called again for every chunk served from the file,
 	// so it has to keep working after a restart, and a location the platform can no longer read is an error.
 	Open(location string) (*os.File, error)
 
+	// Create opens the file at a location for reading and writing at any offset.  The file is created if it is
+	// not there and keeps what it holds if it is.  A download calls it again for every chunk that arrives, which
+	// can be days apart and on either side of a restart.
+	Create(location string) (*os.File, error)
+
+	// Partial is where a download to a location is written until all of it has arrived.  A platform that can keep
+	// a second file beside the one the user picked names that file, and the engine renames it to the location
+	// once the download is complete.  A platform that cannot returns the location itself, and the download is
+	// written straight into the file the user picked.
+	Partial(location string) string
+
+	// Rename moves a completed download from where it was written to the location the user picked
+	Rename(from, to string) error
+
+	// Remove deletes a file the engine wrote for a download that will never be completed.  It is never called
+	// for a file that is complete, nor for one the user attached.
+	Remove(location string) error
+
 	// Release is called when the last record of a file at a location has been deleted.  Whatever the platform
-	// holds only to keep the location readable is given up here, such as a permission, or a copy the platform
+	// holds only to keep the location reachable is given up here, such as a permission, or a copy the platform
 	// itself made where the user cannot reach it.  A file the user can reach is theirs and is never deleted.
 	Release(location string) error
 }

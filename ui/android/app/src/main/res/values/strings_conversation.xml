@@ -72,6 +72,9 @@
     <string name="conv_receiving">Receiving…</string>
     <string name="conv_download">Download</string>
     <string name="conv_cancel_download">Cancel download</string>
+    <!-- A large file is downloaded straight into the place the user picks, a piece at a time,
+         which only a folder on the device itself can take. -->
+    <string name="conv_download_place_unusable">Bounce can\'t download to that place. Choose a folder on this device.</string>
     <string name="conv_photo">Photo</string>
     <string name="conv_photo_count">Photo %1$d of %2$d</string>
 

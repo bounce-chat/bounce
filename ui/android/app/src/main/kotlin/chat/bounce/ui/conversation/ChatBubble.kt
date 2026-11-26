@@ -573,9 +573,9 @@ private fun FileOrVideoAttachment(
     // embed is downloaded to a destination outside the blob store, so the
     // computed path named a file that never existed and every large video stayed
     // a plain file row. Resolved after `available` because the path only exists
-    // once the download has been renamed into place. For a large file this
-    // device sent it is not a path at all but the content URI the file was
-    // attached from, which everything below accepts.
+    // once the download is complete. For a large file it is not a path at all
+    // but the content URI the file was attached from or downloaded to, which
+    // everything below accepts.
     val path by produceState<String?>(null, attachment.id, available, progress) {
         value = if (available) {
             runCatching { EngineHolder.client?.filePath(attachment.id) }.getOrNull()

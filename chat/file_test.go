@@ -697,3 +697,132 @@ func TestCopiesLeftUnfinishedAreRemovedAtStart(t *testing.T) {
 	_, err = os.Stat(blob)
 	assert.NoError(t, err)
 }
+
+// downloadTo downloads a file b has been sent to a destination and waits for it to complete
+func downloadTo(t *testing.T, b *Bounce, fileID ID, destination string) file {
+	t.Helper()
+	b.DownloadFileToDisk(fileID, destination)
+	var f file
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		assert.NoError(t, b.database.First(&f, "id = ?", fileID).Error)
+		if f.Downloaded {
+			return f
+		}
+		b.makeAnyChunkRequests()
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the download never finished")
+	return f
+}
+
+func TestADownloadIsWrittenBesideItsDestinationAndRenamedWhenItCompletes(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	source, data := largeSourceFile(t)
+
+	messageID, f := sendFile(t, alice, groupID, "downloaded", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, messageID, f.ID)
+
+	destination := scratchDirectory(t) + "/saved.bin"
+	mine := downloadTo(t, me, f.ID, destination)
+	assert.Equal(t, destination, mine.Path)
+	saved, err := os.ReadFile(destination)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, saved))
+	_, err = os.Stat(destination + downloadExtension)
+	assert.True(t, os.IsNotExist(err), "the partial file became the finished one")
+	assert.Equal(t, []string{destination}, files.renamed)
+	assert.Equal(t, 0, len(files.removed))
+}
+
+func TestADownloadIsWrittenStraightIntoAFileThatCanHaveNothingBesideIt(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	files.inPlace = true
+	source, data := largeSourceFile(t)
+
+	messageID, f := sendFile(t, alice, groupID, "downloaded in place", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, messageID, f.ID)
+
+	// The platform's picker has already made the file the user named.  They named one that was there before, which
+	// is longer than what is about to be downloaded over it.
+	destination := scratchDirectory(t) + "/saved.bin"
+	assert.NoError(t, os.WriteFile(destination, bytes.Repeat([]byte("old"), len(data)), 0600))
+	mine := downloadTo(t, me, f.ID, destination)
+	assert.Equal(t, destination, mine.Path)
+	saved, err := os.ReadFile(destination)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, saved), "every chunk was written into the file the user named")
+	_, err = os.Stat(destination + downloadExtension)
+	assert.True(t, os.IsNotExist(err), "nothing is written beside a file that can have nothing beside it")
+	assert.Equal(t, 0, len(files.renamed), "and so there is nothing to rename when it completes")
+	assert.Equal(t, 0, len(files.removed))
+}
+
+func TestAChunkIsServedFromADownloadBeingWrittenInPlace(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	me.platform.Files.(*testFileStore).inPlace = true
+	source, data := largeSourceFile(t)
+
+	messageID, f := sendFile(t, alice, groupID, "partly here", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, messageID, f.ID)
+
+	// The first chunk has arrived, and sits in the file the user named because there is nowhere else for it
+	underWay := scratchDirectory(t) + "/underway.bin"
+	assert.NoError(t, os.WriteFile(underWay, data[:fileChunkSize], 0600))
+	firstChunk := strings.Split(f.HashList, ",")[0]
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", f.ID).Updates(map[string]interface{}{"path": underWay, "wanted": true, "downloaded": false}).Error)
+	assert.NoError(t, me.database.Model(&chunk{}).Where("file_id = ? AND hash = ?", f.ID, firstChunk).Update("downloaded", true).Error)
+
+	var mine file
+	assert.NoError(t, me.database.First(&mine, "id = ?", f.ID).Error)
+	chunkData, err := me.getFileChunkData(mine, firstChunk)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data[:fileChunkSize], chunkData))
+}
+
+func TestOnlyADownloadThatIsUnderWayIsEverRemoved(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	files.inPlace = true
+	source, data := largeSourceFile(t)
+	downloads := scratchDirectory(t)
+
+	// A file this device sent is served from the user's own copy.  Where a download is written straight into its
+	// destination, the partial file and the finished file are one and the same, and a cancel must tell them apart.
+	_, sent := sendFile(t, me, groupID, "sent", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	me.CancelDownload(sent.ID)
+	kept, err := os.ReadFile(source)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, kept), "the file the user attached is never removed")
+
+	// Nor is a download that has finished, which is the user's file from then on
+	messageID, received := sendFile(t, alice, groupID, "received", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, messageID, received.ID)
+	saved := downloads + "/saved.bin"
+	assert.NoError(t, os.WriteFile(saved, data, 0600))
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", received.ID).Updates(map[string]interface{}{"path": saved, "wanted": true, "downloaded": true}).Error)
+	me.CancelDownload(received.ID)
+	kept, err = os.ReadFile(saved)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, kept), "a finished download is never removed")
+	assert.Equal(t, 0, len(files.removed))
+
+	// One that is still arriving is removed when it is cancelled
+	underWay := downloads + "/underway.bin"
+	assert.NoError(t, os.WriteFile(underWay, data[:fileChunkSize], 0600))
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", received.ID).Updates(map[string]interface{}{"path": underWay, "wanted": true, "downloaded": false}).Error)
+	me.CancelDownload(received.ID)
+	_, err = os.Stat(underWay)
+	assert.True(t, os.IsNotExist(err))
+	assert.Equal(t, []string{underWay}, files.removed)
+
+	// And when its message is deleted before it finishes
+	assert.NoError(t, os.WriteFile(underWay, data[:fileChunkSize], 0600))
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", received.ID).Updates(map[string]interface{}{"path": underWay, "wanted": true, "downloaded": false}).Error)
+	me.deleteGroupMessageAt(time.Now().Unix(), messageID)
+	_, err = os.Stat(underWay)
+	assert.True(t, os.IsNotExist(err))
+	assert.Equal(t, []string{underWay}, files.releases(), "the platform is told the engine is finished with the location")
+}
