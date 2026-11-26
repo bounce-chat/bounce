@@ -26,22 +26,22 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 	var err error
 	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key)
 	f := &file{
-		ID:                fileID,
-		Type:              fileTypeUserImage,
-		AttachedTo:        b.currentUserID(),
-		Path:              os.TempDir() + "/bounce-file-" + NewID().String(),
-		Hash:              hashString(hash),
-		Size:              int64(len(data)),
-		Wanted:            true,
-		Downloaded:        true,
-		Scope:             scopeGlobal,
-		Destination:       b.currentUserID(),
-		Timestamp:         time.Now().Unix(),
-		Author:            b.currentUserID(),
-		HashList:          hashList,
-		EncryptedHashList: encryptedHashList,
-		Chunks:            chunks,
-		Key:               key,
+		ID:                 fileID,
+		Type:               fileTypeUserImage,
+		AttachedTo:         b.currentUserID(),
+		Path:               os.TempDir() + "/bounce-file-" + NewID().String(),
+		Hash:               hashString(hash),
+		Size:               int64(len(data)),
+		Wanted:             true,
+		Downloaded:         true,
+		Scope:              scopeGlobal,
+		Destination:        b.currentUserID(),
+		Timestamp:          time.Now().Unix(),
+		Author:             b.currentUserID(),
+		HashList:           hashList,
+		EncryptedHashList:  encryptedHashList,
+		Chunks:             chunks,
+		EncryptedDeviceKey: key,
 	}
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	if err != nil {

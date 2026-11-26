@@ -483,3 +483,55 @@ func TestADownloadToAContentURIIsWrittenThroughKotlinIntoTheDocumentItself(t *te
 		t.Fatal("expected an error with no store to remove the URI")
 	}
 }
+
+// memoryFile is a file the engine has opened, held in memory
+type memoryFile struct {
+	*bytes.Reader
+	closed bool
+}
+
+func (m *memoryFile) Size() int64 {
+	return m.Reader.Size()
+}
+
+func (m *memoryFile) Close() error {
+	m.closed = true
+	return nil
+}
+
+func TestABoundReaderHandsBackWhatThereIsAndNothingPastTheEnd(t *testing.T) {
+	file := &memoryFile{Reader: bytes.NewReader([]byte("0123456789"))}
+	reader := &FileReader{reader: file}
+	if reader.Size() != 10 {
+		t.Fatalf("size %d", reader.Size())
+	}
+
+	for _, read := range []struct {
+		offset int64
+		length int
+		want   string
+	}{
+		{0, 4, "0123"},
+		{4, 4, "4567"},
+		// Kotlin is asked for more than is left when a player reaches the end, and wants what there is
+		{8, 4, "89"},
+		{10, 4, ""},
+		{99, 4, ""},
+		{3, 0, ""},
+	} {
+		got, err := reader.ReadAt(read.offset, read.length)
+		if err != nil || string(got) != read.want {
+			t.Fatalf("reading %d at %d gave %q, error %v, want %q", read.length, read.offset, got, err, read.want)
+		}
+	}
+	if _, err := reader.ReadAt(-1, 4); err == nil {
+		t.Fatal("expected an error for a negative offset")
+	}
+	if _, err := reader.ReadAt(0, -1); err == nil {
+		t.Fatal("expected an error for a negative length")
+	}
+
+	if err := reader.Close(); err != nil || !file.closed {
+		t.Fatalf("closing the reader closes the file, got %v, closed %v", err, file.closed)
+	}
+}

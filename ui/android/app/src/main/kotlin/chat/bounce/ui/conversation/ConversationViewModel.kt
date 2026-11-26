@@ -46,7 +46,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
 import java.security.SecureRandom
@@ -510,7 +509,7 @@ class ConversationViewModel(
                 onResult(false)
                 return@launch
             }
-            val source = client.filePath(fileId)
+            val source = client.fileSource(fileId)
             val saved = withContext(Dispatchers.IO) {
                 runCatching {
                     if (source.isNullOrEmpty()) {
@@ -556,7 +555,7 @@ class ConversationViewModel(
             }
             // Resolved before switching to IO so each path is one engine call,
             // not one per retry inside the count loop.
-            val sources = attachments.associate { (id, _) -> id to client.filePath(id) }
+            val sources = attachments.associate { (id, _) -> id to client.fileSource(id) }
             val saved = withContext(Dispatchers.IO) {
                 val dir = DocumentFile.fromTreeUri(appContext, tree)
                 if (dir == null) 0 else attachments.count { (id, name) ->
@@ -681,16 +680,13 @@ class ConversationViewModel(
     }
 
     /**
-     * Opens a file for reading where the engine says it is: a path, or for a
-     * large file served in place, the content URI it was attached from.
+     * Opens a file for reading from the content URI [EngineClient.fileSource]
+     * gave for it: the user's own for a large file, the app's own provider for
+     * one the engine keeps, which decrypts as it is read.
      */
-    private fun openLocation(location: String): InputStream =
-        if (location.startsWith(ContentFileStore.CONTENT_PREFIX)) {
-            appContext.contentResolver.openInputStream(Uri.parse(location))
-                ?: throw FileNotFoundException("the provider returned no stream")
-        } else {
-            File(location).inputStream()
-        }
+    private fun openLocation(source: String): InputStream =
+        appContext.contentResolver.openInputStream(Uri.parse(source))
+            ?: throw FileNotFoundException("the provider returned no stream")
 
     private fun build(repo: RepoSlice, local: LocalSlice): ConversationUiState {
         val group = repo.group

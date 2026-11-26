@@ -31,6 +31,7 @@ type Engine interface {
 	MarkAllGroupMessagesAsRead(groupID ID)
 	MarkAsRead(id ID, frameType string)
 	NetworkOnline() bool
+	OpenFile(fileID ID) (FileReader, error)
 	PromoteGroupAdmin(groupID ID, userID ID) error
 	RejectInvite(groupID ID) error
 	RemoveUserFromGroup(groupID ID, userID ID) error

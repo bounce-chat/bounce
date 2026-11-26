@@ -473,7 +473,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	} else {
 		if len(dm.user.images) > 0 {
 			imageID := dm.user.images[len(dm.user.images)-1]
-			if _, err := ui.bounce.GetFilePath(imageID); err == nil {
+			if ui.bounce.FileDownloaded(imageID) {
 				selectImage = func() {
 					ui.showImageViewer([]*chat.ImageAttachment{{ID: imageID}}, 0)
 				}

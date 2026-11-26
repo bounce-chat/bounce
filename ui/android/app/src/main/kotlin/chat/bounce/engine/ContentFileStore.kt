@@ -7,7 +7,6 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import chat.bounce.goengine.FileStore
-import java.io.File
 import java.io.FileNotFoundException
 
 /**
@@ -93,27 +92,17 @@ class ContentFileStore(context: Context) : FileStore {
     /**
      * The engine has deleted the last message that was served from [location].
      *
-     * A content URI is the user's own file and stays where it is; only the
-     * permission to reach it is given back. A path is a file an earlier version
-     * of the app wrote: a large attachment it downloaded into the app's storage,
-     * or a copy it staged in its cache before sending. Those are deleted,
-     * because once the message is gone nothing else refers to them and the user
-     * has no way to reach them. A path anywhere else is left alone.
+     * The file is the user's own and stays where it is; only the permission to
+     * reach it is given back. Every location the engine is finished with is
+     * reported here, and one that is not a content URI is nothing this side
+     * holds anything for.
      */
     override fun release(location: String) {
-        if (location.startsWith(CONTENT_PREFIX)) {
-            app.contentResolver.releasePersisted(Uri.parse(location))
-            return
-        }
-        val file = File(location)
-        if (file.isInside(app.filesDir) || file.isInside(app.cacheDir)) file.delete()
+        if (location.startsWith(CONTENT_PREFIX)) app.contentResolver.releasePersisted(Uri.parse(location))
     }
 
-    private fun File.isInside(directory: File): Boolean =
-        canonicalPath.startsWith(directory.canonicalPath + File.separator)
-
     companion object {
-        const val CONTENT_PREFIX = "content://"
+        private const val CONTENT_PREFIX = "content://"
         private const val TAG = "BounceFiles"
     }
 }

@@ -44,8 +44,8 @@ class BounceApplication : Application() {
         // service channel synchronously and a missing channel is fatal.
         NotificationChannels.ensure(this)
 
-        // The process can also be created in the background (boot broadcast,
-        // FileProvider access), where starting a foreground service is not
+        // The process can also be created in the background (a boot broadcast,
+        // for one), where starting a foreground service is not
         // permitted; BounceService.start swallows that case rather than
         // crashing the process on launch.
         BounceService.start(this)

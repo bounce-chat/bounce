@@ -3,6 +3,7 @@ package chat.bounce.engine
 import android.os.SystemClock
 import android.util.Log
 import chat.bounce.goengine.Engine
+import chat.bounce.goengine.FileReader
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,8 +18,7 @@ import kotlinx.serialization.json.Json
  * engine is Dispatchers.IO. That is correct today and stays correct when a
  * method that looks like a setter later grows a database write.
  *
- * [blobPath] is the single documented exception - it is string concatenation
- * in Go with no engine call - so it is not suspending.
+ * [openFile] is the one exception, and says why.
  */
 class EngineClient(
     private val engine: Engine,
@@ -289,20 +289,37 @@ class EngineClient(
 
     // --- files -------------------------------------------------------------
 
-    /** Not suspending: pure string concatenation in Go, safe from any thread. */
-    fun blobPath(fileId: String): String = engine.blobPath(fileId)
+    /**
+     * A content URI a completed file can be read from, or null if it is not
+     * finished.
+     *
+     * A file too large to embed is the user's own, kept where it was attached
+     * from or downloaded to, and is read from the content URI it already has.
+     * Anything else is kept by the engine, encrypted, and is read through
+     * [BlobProvider], which has the engine decrypt what is asked for. Either
+     * way the answer is something a ContentResolver, a VideoView or a
+     * MediaMetadataRetriever can be handed as it is.
+     */
+    suspend fun fileSource(fileId: String): String? {
+        val location = call("filePath") { runCatching { it.getFilePath(fileId) }.getOrNull() } ?: return null
+        return location.ifEmpty { BlobProvider.uriFor(fileId).toString() }
+    }
 
     /**
-     * Where a completed file actually is on disk, or null if it is not finished.
-     *
-     * Unlike [blobPath] this asks the engine, so it is right for files too large
-     * to embed - those are downloaded to a destination outside the blobs
-     * directory and [blobPath] would name a file that does not exist.
+     * The whole of a completed file, decrypted. For what has to be in memory
+     * anyway, an image about to be decoded: all of it crosses JNI as one array.
      */
-    suspend fun filePath(fileId: String): String? =
-        call("filePath") { runCatching { it.getFilePath(fileId) }.getOrNull() }
-
     suspend fun fileData(fileId: String): ByteArray = call("fileData") { it.getFileData(fileId) }
+
+    /**
+     * Opens a completed file to be read from any offset. The caller closes it.
+     *
+     * Not suspending, unlike everything else here. Its one caller is
+     * [BlobProvider], which is called by the system on a thread of the system's
+     * choosing and has to answer on that thread. BLOCKING: never call it from
+     * the main thread.
+     */
+    fun openFile(fileId: String): FileReader = engine.openFile(fileId)
 
     suspend fun fileDownloaded(fileId: String): Boolean = call("fileDownloaded") { it.fileDownloaded(fileId) }
 

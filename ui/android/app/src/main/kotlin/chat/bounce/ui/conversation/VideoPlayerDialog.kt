@@ -1,6 +1,10 @@
 package chat.bounce.ui.conversation
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
+import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
 import android.widget.MediaController
 import android.widget.VideoView
@@ -49,18 +53,19 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat.bounce.R
 
 /**
- * Full-screen playback of a video attachment that is already on disk.
+ * Full-screen playback of a video attachment that is already on this device.
  *
  * Built on the platform's [VideoView] and [MediaController] rather than a
- * dedicated player library: the file is a completed download sitting in this
- * process's own private storage, so there is no streaming, adaptation or
- * authentication left to do, and the system decoder covers the whole job. The
- * engine names blobs by bare UUID with no extension, which is fine here because
- * MediaPlayer sniffs the container rather than trusting the file name.
+ * dedicated player library: the file is complete and local, so there is no
+ * streaming, adaptation or authentication left to do, and the system decoder
+ * covers the whole job. The source carries no file name or extension, which is
+ * fine here because MediaPlayer sniffs the container rather than trusting a
+ * name.
  *
- * @param path where the engine says the file is: an absolute path in
- *   app-private storage, or for a large video, the content URI it was attached
- *   from or downloaded to. VideoView takes either.
+ * @param path the content URI the video is read from, as
+ *   EngineClient.fileSource gives it: the user's own for a large video, and the
+ *   app's provider for one the engine keeps, which decrypts it as the player
+ *   reads and seeks. VideoView takes either.
  * @param title the attachment's filename, shown in the header.
  */
 @Composable
@@ -95,7 +100,7 @@ fun VideoPlayerDialog(
     var failed by rememberSaveable { mutableStateOf(false) }
 
     val player = remember(context) { VideoView(context) }
-    val controller = remember(context) { MediaController(context) }
+    val controller = remember(context) { SteadyMediaController(context) }
 
     // VideoView shrinks its measured size to the video's aspect ratio even under
     // exact constraints, and a Compose-hosted view is placed at the host's top
@@ -305,3 +310,41 @@ private val OnVideoScrimMuted = Color.White.copy(alpha = 0.7f)
 private val HeaderScrim = Brush.verticalGradient(
     listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent),
 )
+
+/**
+ * The platform's transport bar, with its hide timer replaced.
+ *
+ * [MediaController] takes itself down a few seconds after it is shown, with a
+ * delayed callback posted through the view, and cancels the earlier callback
+ * the same way each time it is shown again. But a view that is not attached to
+ * a window cannot reach a callback that was posted while it was, and the bar is
+ * detached every time it is hidden. So after show, hide, show, the timer from
+ * the first showing is still running, and it takes the bar down early: tapped
+ * back at 1.5 seconds, it is gone again at 3.
+ *
+ * Here the platform's timer is never started, which is what a timeout of zero
+ * asks for, and the bar is hidden by a timer of our own on a handler that can
+ * always be cancelled. Every show goes through [show], the platform's own calls
+ * included, so each one restarts the full wait.
+ */
+private class SteadyMediaController(context: Context) : MediaController(context) {
+    private val timer = Handler(Looper.getMainLooper())
+    private val hideLater = Runnable { hide() }
+    private val accessibility = context.getSystemService(AccessibilityManager::class.java)
+
+    override fun show(timeout: Int) {
+        super.show(0)
+        timer.removeCallbacks(hideLater)
+        // The platform leaves the bar up under touch exploration, where a
+        // control that vanishes while it is being found is worse than one that
+        // stays.
+        if (timeout != 0 && accessibility?.isTouchExplorationEnabled != true) {
+            timer.postDelayed(hideLater, timeout.toLong())
+        }
+    }
+
+    override fun hide() {
+        timer.removeCallbacks(hideLater)
+        super.hide()
+    }
+}

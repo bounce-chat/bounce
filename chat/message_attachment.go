@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"strings"
 	"unicode/utf8"
 
 	log "github.com/sirupsen/logrus"
@@ -224,9 +223,8 @@ func (b *Bounce) prepareLargeAttachment(a OutgoingAttachment, data io.Reader, sc
 // sent after all: the blob written for each embedded or copied file that was never published.  Seeded files point
 // at the user's own copy and are left alone, as is anything already published.
 func (b *Bounce) discardPreparedAttachments(ma messageAttachments) {
-	blobs := b.platform.ConfigDirectory + "/blobs/"
 	for _, f := range ma.prepared {
-		if !strings.HasPrefix(f.Path, blobs) {
+		if !b.platform.isBlobPath(f.Path) {
 			continue
 		}
 		var published int64

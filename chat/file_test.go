@@ -133,17 +133,17 @@ func TestUnauthorizedScopeFilesAndChunkOffersAreRejected(t *testing.T) {
 		assert.NoError(t, err)
 		hash := blake3.Sum256(data)
 		f := &file{
-			Nonce:       newNonce(),
-			Name:        "payload.bin",
-			Type:        fileType,
-			AttachedTo:  dest,
-			Hash:        hashString(hash),
-			Size:        int64(len(data)),
-			Scope:       scope,
-			Destination: dest,
-			Author:      author.currentUserID(),
-			Timestamp:   time.Now().Unix(),
-			Key:         key,
+			Nonce:              newNonce(),
+			Name:               "payload.bin",
+			Type:               fileType,
+			AttachedTo:         dest,
+			Hash:               hashString(hash),
+			Size:               int64(len(data)),
+			Scope:              scope,
+			Destination:        dest,
+			Author:             author.currentUserID(),
+			Timestamp:          time.Now().Unix(),
+			EncryptedDeviceKey: key,
 		}
 		_, hashList, encryptedHashList := splitChunks(NewID(), data, key)
 		f.HashList = hashList
@@ -384,18 +384,18 @@ func TestCrossFileChunkIsolation(t *testing.T) {
 		_, err := crand.Read(key)
 		assert.NoError(t, err)
 		f := &file{
-			Nonce:       newNonce(),
-			Name:        "probe.bin",
-			Type:        fileTypeMessageAttachment,
-			AttachedTo:  dest,
-			Hash:        chunkHash,
-			Size:        size,
-			HashList:    chunkHash,
-			Scope:       scopeUser,
-			Destination: dest,
-			Author:      author.currentUserID(),
-			Timestamp:   time.Now().Unix(),
-			Key:         key,
+			Nonce:              newNonce(),
+			Name:               "probe.bin",
+			Type:               fileTypeMessageAttachment,
+			AttachedTo:         dest,
+			Hash:               chunkHash,
+			Size:               size,
+			HashList:           chunkHash,
+			Scope:              scopeUser,
+			Destination:        dest,
+			Author:             author.currentUserID(),
+			Timestamp:          time.Now().Unix(),
+			EncryptedDeviceKey: key,
 		}
 		f.ID = f.generateID()
 		f.OriginalPayload, err = msgpack.Marshal(f)

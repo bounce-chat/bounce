@@ -88,25 +88,26 @@ var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
 	SignedFrame
-	ID                ID `gorm:"primary_key;index:idx_file_downloaded"`
-	Nonce             nonce
-	Name              string
-	Type              int
-	AttachedTo        ID
-	Hash              string
-	Size              int64
-	HashList          string
-	EncryptedHashList string
-	Key               []byte
-	Path              string `msgpack:"-" gorm:"not null"`
-	Wanted            bool   `msgpack:"-"`
-	Downloaded        bool   `msgpack:"-" gorm:"index:idx_file_downloaded"`
-	Scope             int
-	Destination       ID
-	Author            ID
-	Timestamp         int64
-	SavedAt           int64   `msgpack:"-"`
-	Chunks            []chunk `msgpack:"-"`
+	ID                 ID `gorm:"primary_key;index:idx_file_downloaded"`
+	Nonce              nonce
+	Name               string
+	Type               int
+	AttachedTo         ID
+	Hash               string
+	Size               int64
+	HashList           string
+	EncryptedHashList  string
+	EncryptedDeviceKey []byte // EncryptedDeviceKey seals the file's chunks for encrypted devices.  Everyone the file is sent to holds it.
+	LocalKey           []byte `msgpack:"-"` // LocalKey seals the file in this install's blobs directory.  It is made here and never leaves.
+	Path               string `msgpack:"-" gorm:"not null"`
+	Wanted             bool   `msgpack:"-"`
+	Downloaded         bool   `msgpack:"-" gorm:"index:idx_file_downloaded"`
+	Scope              int
+	Destination        ID
+	Author             ID
+	Timestamp          int64
+	SavedAt            int64   `msgpack:"-"`
+	Chunks             []chunk `msgpack:"-"`
 }
 
 func (f *file) getNonce() nonce {
@@ -124,7 +125,7 @@ func (f *file) generateID() ID {
 		int64(f.Size).
 		bytes([]byte(f.HashList)).
 		bytes([]byte(f.EncryptedHashList)).
-		bytes(f.Key).
+		bytes(f.EncryptedDeviceKey).
 		int64(int64(f.Scope)).
 		id(f.Author).
 		int64(f.Timestamp).
@@ -166,7 +167,7 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	}
 
 	// A file in the blobs directory is the engine's own copy and goes with its record
-	if strings.HasPrefix(f.Path, platform.ConfigDirectory+"/blobs/") {
+	if platform.isBlobPath(f.Path) {
 		err = os.Remove(f.Path)
 		if err != nil && !os.IsNotExist(err) {
 			log.WithFields(log.Fields{
@@ -546,6 +547,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	}
 	if f.embedded() {
 		f.Path = b.platform.ConfigDirectory + "/blobs/" + f.ID.String()
+		f.LocalKey = newLocalKey()
 	}
 
 	// Save the new file
@@ -1021,7 +1023,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 				return nil, false
 			}
 
-			block, err := aes.NewCipher(f.Key)
+			block, err := aes.NewCipher(f.EncryptedDeviceKey)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -1126,8 +1128,13 @@ func (b *Bounce) readChunkFromFile(f file, c chunk) ([]byte, error) {
 		}).Warn("chunk index lies beyond the file's size")
 		return nil, errChunkDataNotFound
 	}
-	data := make([]byte, want)
-	_, err = fh.ReadAt(data, start)
+	var data []byte
+	if b.platform.isBlobPath(f.Path) {
+		data, err = readSealedChunk(fh, f.LocalKey, c.Index, want)
+	} else {
+		data = make([]byte, want)
+		_, err = fh.ReadAt(data, start)
+	}
 	fh.Close()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1183,7 +1190,7 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 	for _, c := range cs {
 		// Find the file that this chunk is a part of
 		var f file
-		err = b.database.Select("path", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
+		err = b.database.Select("path", "size", "downloaded", "local_key").Where("id = ?", c.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Another file may hold the same chunk, so look at the next copy rather than giving up
 			log.WithFields(log.Fields{
@@ -1298,7 +1305,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			return nil, false
 		}
 
-		block, err := aes.NewCipher(f.Key)
+		block, err := aes.NewCipher(f.EncryptedDeviceKey)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1643,7 +1650,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 
 	// Find the file that contains this chunk
 	var f file
-	err := b.database.Select("path", "size", "hash", "wanted").Where("id = ?", c.FileID).First(&f).Error
+	err := b.database.Select("path", "size", "hash", "wanted", "local_key").Where("id = ?", c.FileID).First(&f).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"file_id": c.FileID,
@@ -1664,6 +1671,17 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		return
 	}
 
+	// Every chunk is a full chunk except the last, which is what the size leaves over.  A chunk of any other length
+	// would not sit where the next one expects it to end.
+	start := int64(c.Index) * int64(fileChunkSize)
+	if int64(len(c.Data)) != min(int64(fileChunkSize), f.Size-start) {
+		log.WithFields(log.Fields{
+			"file_id":  c.FileID,
+			"chunk_id": c.ID,
+		}).Warn("ignoring chunk that is not the length its place in the file calls for")
+		return
+	}
+
 	// A download is written where the platform keeps one until it is complete, which is beside the destination when
 	// it can be and the destination itself when it cannot
 	partial := b.platform.Files.Partial(f.Path)
@@ -1677,15 +1695,11 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	}
 	defer fh.Close()
 
-	start := int64(c.Index) * int64(fileChunkSize)
-	if int64(len(c.Data)) > int64(fileChunkSize) || start+int64(len(c.Data)) > f.Size {
-		log.WithFields(log.Fields{
-			"file_id":  c.FileID,
-			"chunk_id": c.ID,
-		}).Warn("ignoring chunk that exceeds the file's declared size")
-		return
+	if b.platform.isBlobPath(f.Path) {
+		err = writeSealedChunk(fh, f.LocalKey, c.Index, c.Data)
+	} else {
+		_, err = fh.WriteAt(c.Data, start)
 	}
-	_, err = fh.WriteAt(c.Data, start)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path":  f.Path,
@@ -1727,7 +1741,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Fatal("database error checking for remaining empty chunks")
 	}
 	if len(otherEmptyChunks) == 0 {
-		_, hash := b.checkFileHash(partial)
+		_, hash := b.hashFileAt(f, partial)
 		if hash != f.Hash {
 			log.WithFields(log.Fields{
 				"file_id":  c.FileID,
@@ -1796,25 +1810,30 @@ func (b *Bounce) prepareEmbeddedFile(data []byte, scope int, fileType int) (*fil
 	chunks, hashList, encryptedHashList := splitChunks(NilID, data, key)
 
 	f := &file{
-		Nonce:             newNonce(),
-		Type:              fileType,
-		Hash:              hashString(hash),
-		Key:               key,
-		Size:              int64(len(data)),
-		Wanted:            true,
-		Downloaded:        true,
-		Scope:             scope,
-		Timestamp:         time.Now().Unix(),
-		Author:            b.currentUserID(),
-		HashList:          hashList,
-		EncryptedHashList: encryptedHashList,
-		Chunks:            chunks,
+		Nonce:              newNonce(),
+		Type:               fileType,
+		Hash:               hashString(hash),
+		EncryptedDeviceKey: key,
+		LocalKey:           newLocalKey(),
+		Size:               int64(len(data)),
+		Wanted:             true,
+		Downloaded:         true,
+		Scope:              scope,
+		Timestamp:          time.Now().Unix(),
+		Author:             b.currentUserID(),
+		HashList:           hashList,
+		EncryptedHashList:  encryptedHashList,
+		Chunks:             chunks,
 	}
 	f.ID = f.generateID()
 	f.Path = b.platform.ConfigDirectory + "/blobs/" + f.ID.String()
 	bindChunksToFile(f)
 
-	err := os.WriteFile(f.Path, data, 0600)
+	sealed, err := sealBlob(f.LocalKey, data)
+	if err != nil {
+		return nil, err
+	}
+	err = os.WriteFile(f.Path, sealed, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -1878,12 +1897,19 @@ func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file,
 }
 
 // prepareCopiedFile prepares a file too large to embed whose source cannot be served from later.  The data is copied
-// into the blobs directory in the same pass that hashes it, under a temporary name because the file has no ID until
-// its last byte has been read, and it is served from that copy.
+// into the blobs directory, sealed, in the same pass that hashes it, under a temporary name because the file has no
+// ID until its last byte has been read, and it is served from that copy.
 func (b *Bounce) prepareCopiedFile(source io.Reader, scope int, fileType int) (*file, error) {
 	blobs := b.platform.ConfigDirectory + "/blobs/"
 	copying, err := os.CreateTemp(blobs, copyingPrefix+"*")
 	if err != nil {
+		return nil, err
+	}
+	localKey := newLocalKey()
+	blob, err := blobCipher(localKey)
+	if err != nil {
+		copying.Close()
+		os.Remove(copying.Name())
 		return nil, err
 	}
 
@@ -1896,7 +1922,7 @@ func (b *Bounce) prepareCopiedFile(source io.Reader, scope int, fileType int) (*
 		// Exactly a chunk, or what is left: a single Read may return less and would hash wrong
 		read, err := io.ReadFull(source, chunkData)
 		if read > 0 {
-			_, writeErr := copying.Write(chunkData[:read])
+			_, writeErr := copying.Write(sealChunk(blob, i, chunkData[:read]))
 			if writeErr != nil {
 				copying.Close()
 				os.Remove(copying.Name())
@@ -1934,6 +1960,7 @@ func (b *Bounce) prepareCopiedFile(source io.Reader, scope int, fileType int) (*
 		Nonce:      newNonce(),
 		Type:       fileType,
 		Hash:       hashString(allDataHash),
+		LocalKey:   localKey,
 		Size:       size,
 		Wanted:     true,
 		Downloaded: true,
@@ -2057,13 +2084,22 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 		return
 	}
 
+	// The blobs directory is the engine's own.  What is kept there is encrypted, and a download is the user's
+	// file, written as it is.
+	if b.platform.isBlobPath(destination) {
+		log.WithFields(log.Fields{
+			"file_id": fileID,
+		}).Error("refusing to download a file into the blobs directory")
+		return
+	}
+
 	// A download still under way to some other place is abandoned once this one takes over the record.  What
 	// arrived there cannot be carried over, so it is removed when that happens.
 	abandoning := f.Wanted && !f.Downloaded
 
 	// Check if it is already on disk anywhere
-	destinationExists, destinationHash := b.checkFileHash(destination)
-	sourceExists, sourceHash := b.checkFileHash(f.Path)
+	destinationExists, destinationHash := b.hashFileAt(f, destination)
+	sourceExists, sourceHash := b.hashFileAt(f, f.Path)
 	if destinationExists && destinationHash == f.Hash {
 		// If we have the file already at the requested destination, mark it as done in the database and return
 		log.WithFields(log.Fields{
@@ -2094,7 +2130,7 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 	} else if sourceExists && sourceHash == f.Hash {
 		// The file doesn't exist at the destination, but it is still on disk at the last location we had it,
 		// so we create a copy at the new destination and update the database
-		sourceHandler, err := b.platform.Files.Open(f.Path)
+		sourceHandler, err := b.readFileAt(f, f.Path)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"path":  f.Path,
@@ -2112,7 +2148,7 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 			return
 		}
 
-		_, err = io.Copy(destinationHandler, sourceHandler)
+		_, err = io.Copy(destinationHandler, io.NewSectionReader(sourceHandler, 0, sourceHandler.Size()))
 		sourceHandler.Close()
 		destinationHandler.Close()
 		if err != nil {
@@ -2230,27 +2266,23 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 	b.ui.FileDownloadProgress(fileID, 0)
 }
 
-func (b *Bounce) checkFileHash(path string) (bool, string) {
-	fh, err := b.platform.Files.Open(path)
+// hashFileAt hashes what is at a location as the contents of a file, and reports whether anything readable was there
+func (b *Bounce) hashFileAt(f file, location string) (bool, string) {
+	reader, err := b.readFileAt(f, location)
 	if err != nil {
 		return false, ""
 	}
-	defer fh.Close()
-
-	info, err := fh.Stat()
-	if err != nil {
-		return false, ""
-	}
+	defer reader.Close()
 
 	hasher := blake3.New()
-	read := int64(0)
-	for read < info.Size() {
-		chunkData := make([]byte, min(int64(fileChunkSize), info.Size()-read))
-		if _, err := io.ReadFull(fh, chunkData); err != nil {
+	chunkData := make([]byte, fileChunkSize)
+	for read := int64(0); read < reader.Size(); {
+		length := min(int64(fileChunkSize), reader.Size()-read)
+		if _, err := reader.ReadAt(chunkData[:length], read); err != nil {
 			return false, ""
 		}
-		read += int64(len(chunkData))
-		hasher.Write(chunkData)
+		read += length
+		hasher.Write(chunkData[:length])
 	}
 
 	allDataHash := make([]byte, 32)
@@ -2525,20 +2557,25 @@ func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp boo
 	return nil, false
 }
 
+// GetFileData returns the whole of a file the install has all of, decrypted if it is kept in the blobs directory
 func (b *Bounce) GetFileData(fileID ID) ([]byte, error) {
-	path, err := b.GetFilePath(fileID)
+	reader, err := b.OpenFile(fileID)
 	if err != nil {
 		return []byte{}, err
 	}
+	defer reader.Close()
 
-	fh, err := b.platform.Files.Open(path)
+	data := make([]byte, reader.Size())
+	_, err = reader.ReadAt(data, 0)
 	if err != nil {
 		return []byte{}, err
 	}
-	defer fh.Close()
-	return io.ReadAll(fh)
+	return data, nil
 }
 
+// GetFilePath returns where the user keeps a file the install has all of: the place it was attached from or
+// downloaded to, which a UI can open for itself.  A file in the blobs directory has no such place and returns
+// ErrFileInBlobs.
 func (b *Bounce) GetFilePath(fileID ID) (string, error) {
 	var f file
 	err := b.database.Select("path").Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
@@ -2550,6 +2587,9 @@ func (b *Bounce) GetFilePath(fileID ID) (string, error) {
 				"error": err.Error(),
 			}).Fatal("database error looking up file")
 		}
+	}
+	if b.platform.isBlobPath(f.Path) {
+		return "", ErrFileInBlobs
 	}
 
 	return f.Path, nil
@@ -2608,25 +2648,16 @@ func splitChunks(fileID ID, data, key []byte) ([]chunk, string, string) {
 	hashes := []string{}
 	encryptedHashes := []string{}
 
-	index := 0
-	for {
-		if len(data) < fileChunkSize {
-			c := makeChunk(fileID, index, data, key)
-			chunks = append(chunks, c)
-			hashes = append(hashes, c.Hash)
-			encryptedHashes = append(encryptedHashes, c.EncryptedHash)
-			break
-		}
-
-		chunkData := data[:fileChunkSize]
-		data = data[fileChunkSize:]
+	// Every chunk is a full chunk except the last, which is what is left over.  Nothing is left over when the data
+	// ends on a chunk boundary, and then the last chunk is a full one too.
+	for index := 0; len(data) > 0; index++ {
+		chunkData := data[:min(fileChunkSize, len(data))]
+		data = data[len(chunkData):]
 
 		c := makeChunk(fileID, index, chunkData, key)
 		chunks = append(chunks, c)
 		hashes = append(hashes, c.Hash)
 		encryptedHashes = append(encryptedHashes, c.EncryptedHash)
-
-		index += 1
 	}
 
 	return chunks, strings.Join(hashes, ","), strings.Join(encryptedHashes, ",")

@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <!-- Attachments the user chooses to open or share out of Bounce. -->
-    <files-path name="downloads" path="downloads/" />
-</paths>

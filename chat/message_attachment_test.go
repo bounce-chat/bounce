@@ -296,9 +296,13 @@ func TestALargeAttachmentCanBeCopiedIntoTheBlobsDirectory(t *testing.T) {
 	})
 	assert.Equal(t, blobs+f.ID.String(), f.Path)
 	assert.Equal(t, int64(len(data)), f.Size)
-	copied, err := os.ReadFile(f.Path)
+	copied, err := me.GetFileData(f.ID)
 	assert.NoError(t, err)
 	assert.True(t, bytes.Equal(data, copied))
+	onDisk, err := os.ReadFile(f.Path)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(len(data))+chunksFor(f.Size)*sealedChunkOverhead, int64(len(onDisk)))
+	assert.False(t, bytes.Contains(onDisk, data[:64]), "the copy is sealed like anything else in the blobs directory")
 	entries, err := os.ReadDir(blobs)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(entries), "nothing is left of the temporary name the copy was written under")
@@ -318,7 +322,7 @@ func TestALargeAttachmentCanBeCopiedIntoTheBlobsDirectory(t *testing.T) {
 		Name: "large.bin", Reader: io.NopCloser(bytes.NewReader(data)), CopyIn: true,
 	})
 	assert.Equal(t, int64(len(data)), f.Size)
-	copied, err = os.ReadFile(f.Path)
+	copied, err = me.GetFileData(f.ID)
 	assert.NoError(t, err)
 	assert.True(t, bytes.Equal(data, copied))
 

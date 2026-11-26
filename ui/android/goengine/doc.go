@@ -49,7 +49,7 @@ import "github.com/bounce-chat/bounce/chat"
 
 // BindingVersion is checked by the Kotlin layer at startup so an .aar that is
 // out of step with the app fails loudly instead of as a NoSuchMethodError.
-const BindingVersion = 5
+const BindingVersion = 6
 
 // Frame type names accepted by MarkAsRead. Re-exported so Kotlin does not carry
 // its own copies of these string literals.

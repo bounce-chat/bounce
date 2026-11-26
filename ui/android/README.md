@@ -91,7 +91,8 @@ It only has to be redone when Arti itself changes, not on every bind.
   hard build error, which is why it is absent from the version catalog.
 - **Every engine call blocks.** They are synchronous JNI→cgo calls with no async
   form. `EngineClient` puts all of them on `Dispatchers.IO`; the one exception,
-  `blobPath`, is documented as pure string concatenation.
+  `openFile`, is called by the system on a thread of its own choosing and says
+  so.
 - **A running engine cannot necessarily dial.** `chat.Open` starts Tor on a
   goroutine and returns immediately, so `EngineHolder.client` is non-null within
   milliseconds while the transport has no session until Tor has bootstrapped and
@@ -182,11 +183,26 @@ document it returns and takes the lasting permission to read and write it.
 - **The same providers qualify as for serving in place** (`staysReadable`),
   because a finished download is served to others from where it landed.
 
+Everything the engine keeps in `blobs/` is encrypted there, so nothing on this
+side opens a blob for itself. There are two ways to read a file, and neither
+takes a path:
+
+- **`EngineClient.fileData`** hands back the whole file, decrypted. It is for
+  what has to be in memory anyway: `ImageCache` decodes images and avatars from
+  it.
+- **`EngineClient.fileSource`** hands back a content URI to read the file from,
+  which is what the video player, the thumbnail reader and "Save attachment"
+  use. For a large file it is the user's own URI, opened directly. For a file in
+  `blobs/` it is `content://chat.bounce.blobs/<file id>`, answered by
+  `BlobProvider`: a private provider whose descriptor is seekable
+  (`StorageManager.openProxyFileDescriptor`) and whose reads the engine
+  answers, decrypting the part asked for. Nothing is written out decrypted.
+
 Three things follow from all this and are easy to trip over:
 
-- **A file's location is not always a path.** `EngineClient.filePath` returns
-  the content URI for a large file, whether it was sent or received. Check for
-  the `content://` prefix before handing it to anything that wants a `File`.
+- **There is no path to a file.** A blob's path leads to ciphertext, and a large
+  file's location is a content URI. Anything that wants a `File` is asking for
+  something that does not exist; give it the URI from `fileSource`, or bytes.
 - **Android keeps at most 512 lasting permissions per app** and silently drops
   the oldest beyond that. A file whose permission is gone simply stops being
   served, the same as one the user moved or deleted.
@@ -284,8 +300,8 @@ per message.
   separate lightweight conversation activity. The notification code deliberately
   does not set `BubbleMetadata` rather than ship a silently-dropped one.
 - **Inline images in notifications.** `MessagingStyle.Message.setData` needs a
-  `content://` URI, which means exporting decrypted attachment bytes through the
-  FileProvider — worth a deliberate decision about writing plaintext
+  `content://` URI the system can read, which means granting it access to
+  `BlobProvider` — worth a deliberate decision about handing decrypted
   attachments to a shared surface before doing it.
 - **Per-member avatars in group notifications.** The engine keys its
   notification-icon cache by thread, so a group notification currently carries

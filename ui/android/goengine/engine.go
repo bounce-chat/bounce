@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"io"
 	"sync"
 
 	"github.com/bounce-chat/bounce/chat"
@@ -998,25 +998,14 @@ func (a *Engine) SetTypingIndicatorsByDefault(value bool) {
 // Files
 // ---------------------------------------------------------------------------
 
-// BlobPath returns the on-disk path an *embedded* blob would have. Cheap and
-// main-thread safe: pure string concatenation, no engine call.
+// GetFilePath is where the user keeps a downloaded file that is too large to
+// embed: the content URI it was attached from or downloaded to, which Kotlin
+// can open for itself.
 //
-// Only correct for files small enough to embed. A larger file is downloaded to
-// a destination the caller chose and does not live under blobs/ at all, so this
-// reports a path that does not exist for it - use GetFilePath, which asks the
-// engine where the file actually is. Image decoding can keep using this because
-// avatars and inline images are always embedded.
-func (a *Engine) BlobPath(fileID string) string {
-	return filepath.Join(platform.GetConfigDirectory(), "blobs", fileID)
-}
-
-// GetFilePath is where a downloaded file actually is, whatever its size.
-//
-// For a large file that is the location it was attached from or downloaded
-// to, which is a content URI: check for the content:// scheme before treating
-// the result as a path.
-//
-// Returns an error until the download finishes. BLOCKING: one database read.
+// A file the engine keeps in its own storage has no such place. It is encrypted
+// there, so it is read with GetFileData or OpenFile, and this returns an empty
+// string for it. Returns an error until the download finishes. BLOCKING: one
+// database read.
 func (a *Engine) GetFilePath(fileID string) (string, error) {
 	e, err := a.engine()
 	if err != nil {
@@ -1026,11 +1015,18 @@ func (a *Engine) GetFilePath(fileID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return e.GetFilePath(id)
+	location, err := e.GetFilePath(id)
+	if errors.Is(err, chat.ErrFileInBlobs) {
+		return "", nil
+	}
+	return location, err
 }
 
-// GetFileData is the fallback for callers that genuinely need the bytes in
-// memory. Prefer GetFilePath and stream from it. BLOCKING: reads from disk.
+// GetFileData is the whole of a downloaded file, decrypted if the engine keeps
+// it in its own storage. It is for what has to be in memory anyway, an image or
+// an avatar about to be decoded: everything crosses JNI as one byte[]. Use
+// OpenFile to read a part of a file, or one too large to hold. BLOCKING: reads
+// from disk.
 func (a *Engine) GetFileData(fileID string) ([]byte, error) {
 	e, err := a.engine()
 	if err != nil {
@@ -1041,6 +1037,61 @@ func (a *Engine) GetFileData(fileID string) ([]byte, error) {
 		return nil, err
 	}
 	return e.GetFileData(id)
+}
+
+// OpenFile opens a downloaded file to be read from any offset, wherever it is
+// kept. A file in the engine's own storage is decrypted as it is read, which is
+// what lets a video kept there be played and seeked without ever being written
+// out as it is. The caller must Close the reader. BLOCKING: one database read
+// and one open.
+func (a *Engine) OpenFile(fileID string) (*FileReader, error) {
+	e, err := a.engine()
+	if err != nil {
+		return nil, err
+	}
+	id, err := parseID("fileID", fileID)
+	if err != nil {
+		return nil, err
+	}
+	reader, err := e.OpenFile(id)
+	if err != nil {
+		return nil, err
+	}
+	return &FileReader{reader: reader}, nil
+}
+
+// FileReader reads one open file. Its methods may be called from any thread,
+// several at once.
+type FileReader struct {
+	reader chat.FileReader
+}
+
+// Size is the length of the file in bytes.
+func (r *FileReader) Size() int64 {
+	return r.reader.Size()
+}
+
+// ReadAt returns up to length bytes of the file starting at offset. It returns
+// fewer where the file ends, and none at or past the end, which is not an
+// error. BLOCKING: reads from disk, and decrypts.
+func (r *FileReader) ReadAt(offset int64, length int) ([]byte, error) {
+	if offset < 0 || length < 0 {
+		return nil, errors.New("offset and length must not be negative")
+	}
+	if offset >= r.reader.Size() {
+		return []byte{}, nil
+	}
+	data := make([]byte, min(int64(length), r.reader.Size()-offset))
+	read, err := r.reader.ReadAt(data, offset)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	return data[:read], nil
+}
+
+// Close releases the file. The reader must not be used afterwards.
+func (r *FileReader) Close() error {
+	return r.reader.Close()
 }
 
 func (a *Engine) FileDownloaded(fileID string) (bool, error) {
