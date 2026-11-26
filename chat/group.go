@@ -270,6 +270,8 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 	}
 
 	b.reloadGroupConsensus(g.ID)
+	b.deriveGroupKeys(g.ID)
+	go b.refreshMailboxRequests()
 
 	uiGroup := Group{
 		ID:                     g.ID,

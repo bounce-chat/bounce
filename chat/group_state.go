@@ -826,7 +826,7 @@ func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupSta
 		gs.deletedBy = nil
 	}
 
-	return gs.recordKeyChange(ug, userID), nil
+	return gs, nil
 }
 
 func applyUpdateGroupChangeUserManagementPermissionToState(gs groupState, ug updateGroup) (groupState, error) {

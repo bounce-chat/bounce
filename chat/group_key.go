@@ -302,6 +302,24 @@ func unwrapGroupKeyMaterial(ephemeralPublicKey []byte, wraps []groupKeyWrap, dom
 	return plaintext, true
 }
 
+// unwrapGroupKeyMaterial tries our current user ECDH key first and falls back to any previous keys in
+// encryptionKeyHistory, so group creations, invites, rotations and key responses wrapped before a user key rotation
+// still open.
+func (b *Bounce) unwrapGroupKeyMaterial(ephemeralPublicKey []byte, wraps []groupKeyWrap, domain string, userID ID, currentPrivateKey []byte) ([]byte, bool) {
+	if plaintext, ok := unwrapGroupKeyMaterial(ephemeralPublicKey, wraps, domain, userID, currentPrivateKey); ok {
+		return plaintext, true
+	}
+	for _, old := range b.encryptionKeyHistory() {
+		if bytes.Equal(old, currentPrivateKey) {
+			continue
+		}
+		if plaintext, ok := unwrapGroupKeyMaterial(ephemeralPublicKey, wraps, domain, userID, old); ok {
+			return plaintext, true
+		}
+	}
+	return nil, false
+}
+
 // groupKeyRecipients returns the users who should be able to derive the group's next key: the members and invitees
 // of the given state, minus the user being removed
 func (b *Bounce) groupKeyRecipients(gs groupState, exclude ID) []user {
@@ -400,8 +418,69 @@ func (b *Bounce) groupKeyChain(groupID ID) []groupKey {
 	return keys
 }
 
-// currentGroupKey returns the newest key we hold for a group
+// groupKeyForEpoch returns the stored key for one specific epoch of a group
+func (b *Bounce) groupKeyForEpoch(groupID ID, epoch ID) (groupKey, bool) {
+	var gk groupKey
+	err := b.database.Where("group_id = ? AND epoch = ?", groupID, epoch).Take(&gk).Error
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"epoch":    epoch,
+				"error":    err.Error(),
+			}).Fatal("database error loading group key for epoch")
+		}
+		return groupKey{}, false
+	}
+	return gk, true
+}
+
+// groupKeyBeforeUpdate returns the key that was active in consensus just before the given updateGroup frame.
+// Sealing a group update under its predecessor key ensures an offline member (or a removed member) holding K_{n-1}
+// can open the update that introduces K_n — and any consensus prerequisite before K_n — from an encrypted device.
+func (b *Bounce) groupKeyBeforeUpdate(groupID ID, updateID ID) (groupKey, bool) {
+	stack, err := b.currentGroupStack(groupID)
+	if err != nil {
+		return groupKey{}, false
+	}
+	b.consensusStore.Lock()
+	var predecessor ID
+	found := false
+	for i := 1; i < len(stack.history); i++ {
+		if stack.history[i].ug.ID == updateID {
+			prev := stack.history[i-1]
+			if len(prev.keyEpochs) == 0 {
+				predecessor = groupID
+			} else {
+				predecessor = prev.keyEpochs[len(prev.keyEpochs)-1]
+			}
+			found = true
+			break
+		}
+	}
+	b.consensusStore.Unlock()
+	if !found {
+		return groupKey{}, false
+	}
+	return b.groupKeyForEpoch(groupID, predecessor)
+}
+
+// currentGroupKey returns the newest canonical key we hold for a group.  Consensus rollbacks leave rolled-back keys
+// in the table so older frames stay readable, so this follows the canonical epoch list rather than taking the highest
+// index stored.
 func (b *Bounce) currentGroupKey(groupID ID) (groupKey, bool) {
+	if gs, err := b.currentGroupState(groupID); err == nil {
+		for i := len(gs.keyEpochs) - 1; i >= 0; i-- {
+			if gk, ok := b.groupKeyForEpoch(groupID, gs.keyEpochs[i]); ok {
+				return gk, true
+			}
+		}
+		if gk, ok := b.groupKeyForEpoch(groupID, groupID); ok {
+			return gk, true
+		}
+		return groupKey{}, false
+	}
+
 	var gk groupKey
 	err := b.database.Where("group_id = ?", groupID).Order("`index` desc").Take(&gk).Error
 	if err != nil {
@@ -480,6 +559,80 @@ func (b *Bounce) storeGroupKeys(groupID ID, keys []groupKey) {
 	}
 }
 
+// storeMissingGroupKeys inserts keys for epochs we do not already hold, without overwriting existing derived keys
+func (b *Bounce) storeMissingGroupKeys(groupID ID, keys []groupKey) {
+	for i := range keys {
+		keys[i].GroupID = groupID
+		keys[i].KeyID = groupKeyIDFor(keys[i].Key)
+		err := b.database.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "group_id"}, {Name: "epoch"}},
+			DoNothing: true,
+		}).Create(&keys[i]).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Fatal("database error saving group key")
+		}
+	}
+}
+
+// canonicalGroupEpochs maps every epoch on the group's canonical chain (groupID at 0, then keyEpochs in order) to
+// its canonical index.
+func canonicalGroupEpochs(groupID ID, gs groupState) map[ID]int {
+	epochs := map[ID]int{groupID: 0}
+	for i, epoch := range gs.keyEpochs {
+		epochs[epoch] = i + 1
+	}
+	return epochs
+}
+
+const maximumBootstrapGroupKeys = 4096
+
+// bootstrapGroupKeysFromInvite unwraps the exported key chain from an invite addressed to us when the invite arrives
+// before the group creation (for example, through the inviter's encrypted device where the creation was stored under
+// the group key before we were invited).  Only runs when we hold no keys for the group yet, and triggers a mailbox
+// refresh so the host immediately serves the group creation and consensus history.
+func (b *Bounce) bootstrapGroupKeysFromInvite(ug updateGroup) {
+	if ug.Type != updateGroupTypeInviteUser || len(ug.KeyWraps) == 0 {
+		return
+	}
+	me, ok := b.currentUser()
+	if !ok || len(me.PrivateECDHKey) == 0 {
+		return
+	}
+	var invited user
+	if err := msgpack.Unmarshal(ug.Data, &invited); err != nil || invited.ID != me.ID {
+		return
+	}
+	if len(b.groupKeyChain(ug.Target)) > 0 {
+		return
+	}
+	plaintext, ok := b.unwrapGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, groupKeyDomainChain, me.ID, me.PrivateECDHKey)
+	if !ok {
+		return
+	}
+	var export groupKeyChainExport
+	if err := msgpack.Unmarshal(plaintext, &export); err != nil {
+		return
+	}
+	keys := []groupKey{}
+	for _, k := range export.Keys {
+		if len(keys) >= maximumBootstrapGroupKeys {
+			break
+		}
+		if k.Epoch == NilID || len(k.Key) != groupKeySize || k.Index < 0 {
+			continue
+		}
+		keys = append(keys, groupKey{Epoch: k.Epoch, Index: k.Index, Key: k.Key})
+	}
+	if len(keys) == 0 {
+		return
+	}
+	b.storeMissingGroupKeys(ug.Target, keys)
+	go b.refreshMailboxRequests()
+}
+
 // groupKeyRequestTimes tracks when we last asked other members for a group's keys, so that we ask once rather than
 // on every consensus write.  Keyed by our own address as well as the group, since tests run several engines in one
 // process.
@@ -512,6 +665,8 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 		framesByID[gs.ug.ID] = gs.ug
 	}
 
+	canonicalIndex := canonicalGroupEpochs(groupID, final)
+
 	// Start from whatever we already hold
 	held := map[ID]groupKey{}
 	for _, gk := range b.groupKeyChain(groupID) {
@@ -523,15 +678,24 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 		var gc groupCreation
 		err := b.database.Where("id = ?", groupID).First(&gc).Error
 		if err == nil {
-			if secret, ok := unwrapGroupKeyMaterial(gc.KeyEphemeralKey, gc.KeyWraps, groupKeyDomainSecret, me.ID, me.PrivateECDHKey); ok {
+			if secret, ok := b.unwrapGroupKeyMaterial(gc.KeyEphemeralKey, gc.KeyWraps, groupKeyDomainSecret, me.ID, me.PrivateECDHKey); ok {
 				if len(gc.KeySecretHash) == 0 || groupKeySecretMatchesHash(secret, gc.KeySecretHash) {
 					held[groupID] = groupKey{Epoch: groupID, Index: 0, Key: initialGroupKey(secret), Secret: nil}
 				}
 			}
 		}
 	}
-	if len(held) == 0 {
-		// Look for the most recent invite of us that carried the chain
+
+	// Fill any canonical epochs we do not hold yet from the most recent invite of us that carried the chain
+	// (including a re-invite after a removal whose rotation we missed).  Existing keys are never overwritten.
+	missingAny := false
+	for epoch := range canonicalIndex {
+		if _, ok := held[epoch]; !ok {
+			missingAny = true
+			break
+		}
+	}
+	if missingAny {
 		for i := len(cs.history) - 1; i >= 1; i-- {
 			ug := cs.history[i].ug
 			if ug.Type != updateGroupTypeInviteUser || len(ug.KeyWraps) == 0 {
@@ -541,7 +705,7 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 			if err := msgpack.Unmarshal(ug.Data, &invited); err != nil || invited.ID != me.ID {
 				continue
 			}
-			plaintext, ok := unwrapGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, groupKeyDomainChain, me.ID, me.PrivateECDHKey)
+			plaintext, ok := b.unwrapGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, groupKeyDomainChain, me.ID, me.PrivateECDHKey)
 			if !ok {
 				continue
 			}
@@ -550,8 +714,12 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 				continue
 			}
 			for _, k := range export.Keys {
-				if len(k.Key) == groupKeySize && k.Index >= 0 {
-					held[k.Epoch] = groupKey{Epoch: k.Epoch, Index: k.Index, Key: k.Key}
+				idx, canonical := canonicalIndex[k.Epoch]
+				if !canonical || len(k.Key) != groupKeySize {
+					continue
+				}
+				if _, exists := held[k.Epoch]; !exists {
+					held[k.Epoch] = groupKey{Epoch: k.Epoch, Index: idx, Key: k.Key}
 				}
 			}
 			break
@@ -566,13 +734,18 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 	derived := []groupKey{}
 	previous, ok := held[groupID]
 	if !ok {
-		// Our export did not include the initial key; start from the earliest key we were given
+		// Our export did not include the initial key; start from the earliest canonical key we were given
 		lowest := -1
-		for _, gk := range held {
-			if lowest == -1 || gk.Index < lowest {
-				lowest = gk.Index
+		for epoch, idx := range canonicalIndex {
+			if gk, present := held[epoch]; present && (lowest == -1 || idx < lowest) {
+				lowest = idx
+				gk.Index = idx
 				previous = gk
 			}
+		}
+		if lowest == -1 {
+			b.requestGroupKey(groupID)
+			return
 		}
 	}
 	derived = append(derived, previous)
@@ -585,7 +758,7 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 		if gk, ok := held[epoch]; ok && len(gk.Secret) > 0 {
 			secret = gk.Secret
 		} else if ug, ok := framesByID[epoch]; ok && ug.carriesGroupKeySecret() {
-			unwrapped, ok := unwrapGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, groupKeyDomainSecret, me.ID, me.PrivateECDHKey)
+			unwrapped, ok := b.unwrapGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, groupKeyDomainSecret, me.ID, me.PrivateECDHKey)
 			if ok {
 				if !groupKeySecretMatchesHash(unwrapped, ug.KeySecretHash) {
 					log.WithFields(log.Fields{
@@ -817,7 +990,7 @@ func (b *Bounce) handleGroupKeyRequest(peer string, payload []byte, _ bool) (bro
 		return nil, false
 	}
 
-	b.sendDirect(peer, &groupKeyResponse{
+	go b.sendDirect(peer, &groupKeyResponse{
 		GroupID:         request.GroupID,
 		KeyEphemeralKey: ephemeral,
 		Wrap:            wraps[0],
@@ -856,7 +1029,7 @@ func (b *Bounce) handleGroupKeyResponse(peer string, payload []byte, _ bool) (br
 	if !ok {
 		return nil, false
 	}
-	plaintext, ok := unwrapGroupKeyMaterial(response.KeyEphemeralKey, []groupKeyWrap{response.Wrap}, groupKeyDomainResponse, me.ID, me.PrivateECDHKey)
+	plaintext, ok := b.unwrapGroupKeyMaterial(response.KeyEphemeralKey, []groupKeyWrap{response.Wrap}, groupKeyDomainResponse, me.ID, me.PrivateECDHKey)
 	if !ok {
 		log.WithFields(log.Fields{
 			"peer":     peer,
@@ -870,14 +1043,22 @@ func (b *Bounce) handleGroupKeyResponse(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
+	// Only accept keys for epochs that actually exist on our canonical chain, using their canonical indices, and
+	// never overwrite keys we already hold.  Otherwise any member could poison our chain or inject a high-index
+	// bogus epoch.
+	canonicalIndex := canonicalGroupEpochs(response.GroupID, gs)
 	keys := []groupKey{}
 	for _, k := range export.Keys {
-		if len(k.Key) != groupKeySize || k.Index < 0 {
+		idx, canonical := canonicalIndex[k.Epoch]
+		if !canonical || len(k.Key) != groupKeySize {
 			continue
 		}
-		keys = append(keys, groupKey{Epoch: k.Epoch, Index: k.Index, Key: k.Key})
+		keys = append(keys, groupKey{Epoch: k.Epoch, Index: idx, Key: k.Key})
 	}
-	b.storeGroupKeys(response.GroupID, keys)
+	if len(keys) == 0 {
+		return nil, false
+	}
+	b.storeMissingGroupKeys(response.GroupID, keys)
 
 	// Now that we have an entry point, derive anything newer from the stack
 	b.deriveGroupKeys(response.GroupID)

@@ -49,6 +49,18 @@ func waitForGroupKeys(t *testing.T, b *Bounce, groupID ID, n int) []groupKey {
 	return chain
 }
 
+func waitForGroupInvite(t *testing.T, b *Bounce, groupID ID) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if gs, err := b.currentGroupState(groupID); err == nil && gs.isInvited(b.currentUserID()) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("%s never received invite for group %s", b.network.Address()[:8], groupID)
+}
+
 func keyIDs(chain []groupKey) [][]byte {
 	ids := [][]byte{}
 	for _, gk := range chain {
@@ -196,6 +208,7 @@ func TestConcurrentRemovalsComposeUnderConsensus(t *testing.T) {
 		introduce(t, b, carol)
 	}
 	assert.NoError(t, me.InviteUserToGroup(groupID, carol.currentUserID()))
+	waitForGroupInvite(t, carol, groupID)
 	waitForGroupKeys(t, carol, groupID, 1)
 	waitForTheNextSecond()
 	assert.NoError(t, carol.AcceptInvite(groupID))
@@ -416,4 +429,217 @@ func TestKeysAreStableAcrossAConsensusReload(t *testing.T) {
 	after := me.groupKeyChain(groupID)
 	assert.True(t, sameKeys(before, after))
 	assert.Equal(t, keyIDs(before), keyIDs(after))
+}
+
+func TestDemotingAnAdminDoesNotMarkTheGroupKeyStale(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	waitForGroupKeys(t, me, groupID, 1)
+	waitForGroupKeys(t, alice, groupID, 1)
+
+	assert.NoError(t, me.PromoteGroupAdmin(groupID, alice.currentUserID()))
+	waitForTheNextSecond()
+	assert.NoError(t, me.DemoteGroupAdmin(groupID, alice.currentUserID()))
+
+	gs, err := me.currentGroupState(groupID)
+	assert.NoError(t, err)
+	assert.True(t, gs.isMember(alice.currentUserID()))
+	assert.False(t, gs.isAdmin(alice.currentUserID()))
+	assert.False(t, gs.keyStale, "demoting an admin keeps them in the group and should not mark the key chain stale")
+}
+
+func TestAGroupKeyResponseCannotOverwriteExistingKeysOrInjectEpochs(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	before := waitForGroupKeys(t, me, groupID, 1)
+	waitForGroupKeys(t, alice, groupID, 1)
+
+	// Alice sends an unsolicited key response attempting both to overwrite our canonical initial key and to inject
+	// a bogus high-index epoch.
+	var meRow user
+	assert.NoError(t, alice.database.Select("id", "public_ecdh_key").First(&meRow, "id = ?", me.currentUserID()).Error)
+	forgedInitial, _ := newGroupKeySecret()
+	forgedExtra, _ := newGroupKeySecret()
+	bogusEpoch := NewID()
+	export := groupKeyChainExport{
+		Keys: []groupKeyExport{
+			{Epoch: groupID, Index: 0, Key: forgedInitial},
+			{Epoch: bogusEpoch, Index: 9999, Key: forgedExtra},
+		},
+	}
+	plaintext, err := msgpack.Marshal(export)
+	assert.NoError(t, err)
+	ephemeral, wraps, err := wrapGroupKeyMaterial(plaintext, groupKeyDomainResponse, []user{meRow})
+	assert.NoError(t, err)
+	response := groupKeyResponse{GroupID: groupID, KeyEphemeralKey: ephemeral, Wrap: wraps[0]}
+	me.handleGroupKeyResponse(alice.network.Address(), response.getPayload(), false)
+
+	after := me.groupKeyChain(groupID)
+	assert.True(t, sameKeys(before, after), "a group key response must not overwrite existing keys or store non-canonical epochs")
+	current, ok := me.currentGroupKey(groupID)
+	assert.True(t, ok)
+	assert.Equal(t, before[0].Key, current.Key)
+}
+
+func TestCurrentGroupKeyFollowsConsensusAfterARollback(t *testing.T) {
+	quickReferenceRetries(t)
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+	for _, b := range []*Bounce{me, alice, bob} {
+		introduce(t, b, carol)
+	}
+	assert.NoError(t, me.InviteUserToGroup(groupID, carol.currentUserID()))
+	waitForGroupInvite(t, carol, groupID)
+	waitForGroupKeys(t, carol, groupID, 1)
+	waitForTheNextSecond()
+	assert.NoError(t, carol.AcceptInvite(groupID))
+	for _, b := range []*Bounce{me, alice, bob, carol} {
+		waitForGroupKeys(t, b, groupID, 1)
+	}
+	initial, ok := me.currentGroupKey(groupID)
+	assert.True(t, ok)
+
+	// Restrict user management so only admins can remove members, promote Alice, then have Alice remove Bob
+	// (introducing a new key epoch) at T+1 while Me demotes Alice at T.  In a 4-member group, Alice + Me is 50%
+	// (not a strict majority), so Me's earlier demotion rolls back Alice's removal when it arrives.
+	assert.NoError(t, me.RestrictUserManagement(groupID))
+	assert.NoError(t, me.PromoteGroupAdmin(groupID, alice.currentUserID()))
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		gs, _ := alice.currentGroupState(groupID)
+		if gs.isAdmin(alice.currentUserID()) && gs.userManagementRestricted && gs.isMember(carol.currentUserID()) {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	// Disconnect peers so Alice's removal does not gather majority confirmations before Me's earlier demotion arrives
+	disconnectFrom(t, me, alice)
+	disconnectFrom(t, me, bob)
+	disconnectFrom(t, me, carol)
+
+	baseTime := time.Now().Unix() + 2
+	aliceID := alice.currentUserID()
+	bobID := bob.currentUserID()
+	aliceState, _ := alice.currentGroupState(groupID)
+	aliceRemovesBob := &updateGroup{Actor: aliceID, Target: groupID, Timestamp: baseTime + 1, Type: updateGroupTypeRemoveUser, Data: bobID[:]}
+	assert.NoError(t, alice.attachGroupKeySecret(aliceRemovesBob, aliceState, bobID))
+	removeFrame := signUpdateGroup(alice, aliceRemovesBob)
+
+	// Me applies Alice's removal first and advances to epoch 1
+	me.handleUpdateGroup(alice.network.Address(), removeFrame, false)
+	rotated, ok := me.currentGroupKey(groupID)
+	assert.True(t, ok)
+	assert.Equal(t, aliceRemovesBob.ID, rotated.Epoch)
+
+	// Now an earlier demotion of Alice arrives, rolling back Alice's removal
+	meDemotesAlice := &updateGroup{Actor: me.currentUserID(), Target: groupID, Timestamp: baseTime, Type: updateGroupTypeDemoteAdmin, Data: aliceID[:]}
+	demoteFrame := signUpdateGroup(me, meDemotesAlice)
+	me.handleUpdateGroup(me.network.Address(), demoteFrame, false)
+
+	gs, err := me.currentGroupState(groupID)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(gs.keyEpochs), "the rolled-back removal should no longer be on the canonical chain")
+
+	current, ok := me.currentGroupKey(groupID)
+	assert.True(t, ok)
+	assert.Equal(t, initial.Epoch, current.Epoch, "currentGroupKey must return the canonical head epoch, not a rolled-back key")
+	assert.Equal(t, initial.Key, current.Key)
+
+	// The rolled-back key stays stored so frames sealed under it before the rollback remain readable
+	_, stillReadable := me.groupKeyByID(groupID, rotated.KeyID)
+	assert.True(t, stillReadable)
+}
+
+func TestAReinvitedMemberDerivesTheChainFromTheirReinvite(t *testing.T) {
+	quickReferenceRetries(t)
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	for _, b := range []*Bounce{me, alice, bob} {
+		waitForGroupKeys(t, b, groupID, 1)
+	}
+
+	// Remove Bob (rotating K_0 -> K_1 away from him)
+	assert.NoError(t, me.RemoveUserFromGroup(groupID, bob.currentUserID()))
+	rotated := waitForGroupKeys(t, me, groupID, 2)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		gs, _ := bob.currentGroupState(groupID)
+		if !gs.isMember(bob.currentUserID()) {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	// Disconnect Alice and Me from Bob before delivering the group creation, removal, and re-invite manually, so
+	// Bob cannot rely on groupKeyRequest: he still holds K_0 in group_keys and must extract K_1 from the re-invite.
+	disconnectFrom(t, me, bob)
+	disconnectFrom(t, alice, bob)
+
+	waitForTheNextSecond()
+	var gc groupCreation
+	assert.NoError(t, me.database.First(&gc, "id = ?", groupID).Error)
+	var removal updateGroup
+	assert.NoError(t, me.database.Where("target = ? AND type = ?", groupID, updateGroupTypeRemoveUser).First(&removal).Error)
+	var bobUser user
+	assert.NoError(t, me.database.Preload("Devices").First(&bobUser, "id = ?", bob.currentUserID()).Error)
+	me.attachDeviceRevocations(&bobUser)
+	bobBytes, err := msgpack.Marshal(bobUser)
+	assert.NoError(t, err)
+	reinvite := &updateGroup{
+		Actor:     me.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeInviteUser,
+		Data:      bobBytes,
+	}
+	assert.NoError(t, me.attachGroupKeyChain(reinvite, bobUser))
+	reinviteFrame := signUpdateGroup(me, reinvite)
+
+	// Deliver all consensus frames as a catch up (removal wiped Bob's groupCreation while leaving K_0 in
+	// group_keys, so the re-invite must be stored before consensus runs on the creation).
+	var priorUpdates []updateGroup
+	assert.NoError(t, me.database.Where("target = ?", groupID).Order("timestamp asc, id asc").Find(&priorUpdates).Error)
+	bob.handleGroupCreation(me.network.Address(), gc.getPayload(), true)
+	for _, ug := range priorUpdates {
+		bob.handleUpdateGroup(me.network.Address(), ug.getPayload(), true)
+	}
+	bob.handleUpdateGroup(me.network.Address(), reinviteFrame, true)
+	assert.NoError(t, bob.reloadGroupConsensus(groupID))
+	assert.NoError(t, bob.writeGroupConsensus(groupID))
+
+	bobs := bob.groupKeyChain(groupID)
+	assert.True(t, sameKeys(rotated, bobs), "a re-invited member who still holds K_0 must extract K_1 from their re-invite")
+}
+
+func TestGroupKeysStillUnwrapAfterRollingUserECDHKey(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	waitForGroupKeys(t, me, groupID, 1)
+	waitForGroupKeys(t, alice, groupID, 1)
+
+	// Alice prepares a rotation wrapped for Me's current (soon to be old) ECDH key before learning Me rolled keys
+	aliceState, err := alice.currentGroupState(groupID)
+	assert.NoError(t, err)
+	rotation := &updateGroup{
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix() + 2,
+		Type:      updateGroupTypeRotateKey,
+	}
+	assert.NoError(t, alice.attachGroupKeySecret(rotation, aliceState, NilID))
+	rotationFrame := signUpdateGroup(alice, rotation)
+
+	// Me rolls user keys before receiving Alice's rotation
+	waitForTheNextSecond()
+	beforeKey := mustCurrentUser(me).PrivateECDHKey
+	assert.NoError(t, me.rollKeys())
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && bytes.Equal(beforeKey, mustCurrentUser(me).PrivateECDHKey) {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.NotEqual(t, beforeKey, mustCurrentUser(me).PrivateECDHKey)
+
+	// Applying the rotation wrapped for Me's previous key still derives the new epoch
+	me.handleUpdateGroup(alice.network.Address(), rotationFrame, false)
+	alice.handleUpdateGroup(alice.network.Address(), rotationFrame, false)
+	assert.Equal(t, 2, len(me.groupKeyChain(groupID)))
+	assert.True(t, sameKeys(alice.groupKeyChain(groupID), me.groupKeyChain(groupID)))
 }
