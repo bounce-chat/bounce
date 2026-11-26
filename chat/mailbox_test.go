@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
+	"fmt"
+	"slices"
+	"sort"
 	"testing"
 	"time"
 
@@ -713,4 +716,78 @@ func TestSyncFramesStayOnTheirOwnersHostsAndCopiesGoOnlyToTheirReaders(t *testin
 	assert.True(t, offered || bobsHost.frameIsDeliveredTo(ef.ID, typeEncryptedFrame, bob.network.Address()))
 	served = bobsHost.generateEncryptedCatchUpFor(bob.network.Address(), referenceRequest{References: []frameReference{{FrameID: ef.ID, Type: typeEncryptedFrame}}})
 	assert.Equal(t, 1, len(served.Frames))
+}
+
+// A frame of ours for everyone we know, such as a new profile name, is sealed to every group we are in and to the DM
+// of each user we know who is in none of them.  A group's key reaches all of its members through one mailbox, so
+// everyone is reached however many there are, and in the same mailboxes every time the frame is sealed.
+func TestAFrameForEveryoneWeKnowIsSealedToOurGroupsAndToTheUsersOutsideThem(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	for _, member := range []*Bounce{me, alice, bob} {
+		waitForGroupKeys(t, member, groupID, 1)
+	}
+
+	// Sixteen users who know me and share no group with me.  With the two in the group that is more than the
+	// fifteen users a frame was sealed to before, who were drawn at random each time.
+	outsiders := []*Bounce{}
+	for i := 0; i < 16; i++ {
+		outsider := newBounceUser(fmt.Sprintf("Outsider %02d", i))
+		t.Cleanup(outsider.Shutdown)
+		var mine, theirs user
+		encoded, _ := msgpack.Marshal(mustCurrentUser(me))
+		assert.NoError(t, msgpack.Unmarshal(encoded, &mine))
+		encoded, _ = msgpack.Marshal(mustCurrentUser(outsider))
+		assert.NoError(t, msgpack.Unmarshal(encoded, &theirs))
+		assert.NoError(t, outsider.database.Create(&mine).Error)
+		assert.NoError(t, me.database.Create(&theirs).Error)
+		outsiders = append(outsiders, outsider)
+	}
+	assert.Equal(t, 3+len(outsiders), len(me.getUsersInGlobalScope(me.currentUserID())), "nobody I know is left out of scope")
+
+	assert.NoError(t, me.UpdateProfileName("A New Name"))
+	var renamed updateUser
+	assert.NoError(t, me.database.Where("target = ? AND type = ?", me.currentUserID(), updateUserTypeUpdateName).First(&renamed).Error)
+	labelsOf := func(ef *encryptedFrame) []string {
+		labels := []string{}
+		for _, entry := range ef.Mailboxes {
+			labels = append(labels, string(entry.Label))
+		}
+		sort.Strings(labels)
+		return labels
+	}
+	group, ok := me.currentGroupKey(groupID)
+	assert.True(t, ok)
+	groupLabel := string(mailboxLabel(group.Key, currentMailboxEpoch()))
+
+	// On an encrypted device of my own it is in the group's mailbox and in one for each user outside the group,
+	// and every one of them can open it
+	onMine := me.sealForHost(&renamed, newTestnet().Address())
+	assert.True(t, onMine != nil)
+	assert.Equal(t, 1+len(outsiders), len(onMine.Mailboxes))
+	assert.True(t, slices.Contains(labelsOf(onMine), groupLabel), "the group's mailbox is one of them")
+	for _, reader := range append([]*Bounce{alice, bob}, outsiders...) {
+		opened, ok := openWith(reader, onMine)
+		assert.True(t, ok, "everyone I know can open it")
+		assert.Equal(t, renamed.ID, opened.ID)
+	}
+
+	// Sealed again it is in the same mailboxes: nobody is drawn
+	again := me.sealForHost(&renamed, newTestnet().Address())
+	assert.True(t, again != nil)
+	assert.Equal(t, labelsOf(onMine), labelsOf(again))
+
+	// On the device of someone in the group it is in the group's mailbox and no other, and on the device of someone
+	// outside it, in the DM we share and no other
+	onAlices := me.sealForHost(&renamed, fakeEncryptedDeviceOf(t, alice.currentUserID()).Address())
+	assert.True(t, onAlices != nil)
+	assert.Equal(t, []string{groupLabel}, labelsOf(onAlices))
+	onAnOutsiders := me.sealForHost(&renamed, fakeEncryptedDeviceOf(t, outsiders[0].currentUserID()).Address())
+	assert.True(t, onAnOutsiders != nil)
+	assert.Equal(t, 1, len(onAnOutsiders.Mailboxes))
+	_, ok = openWith(outsiders[0], onAnOutsiders)
+	assert.True(t, ok)
+	_, ok = openWith(alice, onAnOutsiders)
+	assert.False(t, ok, "the DM with an outsider is not a mailbox anyone in the group can read")
+	_, ok = openWith(outsiders[1], onAnOutsiders)
+	assert.False(t, ok)
 }

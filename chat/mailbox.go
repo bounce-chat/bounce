@@ -51,8 +51,8 @@ const mailboxLabelSize = 32
 const mailboxTagSize = 16
 
 // A copy on a host is in one mailbox per conversation its frame belongs to.  That is one for a message, and one per
-// contact for the few frames a user sends to everyone they know, so this is far above anything legitimate; it is
-// here so that a single copy cannot carry an unbounded number of rows onto a host.
+// group and per contact outside every group for the few frames a user sends to everyone they know, so this is far
+// above anything legitimate; it is here so that a single copy cannot carry an unbounded number of rows onto a host.
 const maximumMailboxesPerCopy = 4096
 
 // A peer may ask a host for this many mailboxes.  A device has a mailbox per conversation it can read for each epoch
@@ -223,17 +223,24 @@ func (b *Bounce) groupThreadSecrets(groupID ID) [][]byte {
 	return secrets
 }
 
-// A secret a frame can be sealed to, and whose conversation it is: a group's key (no user), the secret shared with
-// one other user for their DM, or our own sync secret (our user)
+// A secret a frame can be sealed to, and whose conversation it is: a group's key (the group), the secret shared with
+// one other user for their DM (that user), or our own sync secret (our user)
 type threadSecret struct {
 	secret []byte
 	user   ID
+	group  ID
 }
 
 // threadSecretsFor returns every secret a frame could be sealed to, one per conversation it belongs to, according
 // to its scope.  Group frames use the group's current key (rotating it first if the membership shrank without a
 // rotation); frames to other users use the secret shared with each of them.  Our own devices derive every one of
 // those secrets too, so the sync secret is only used for frames that have no conversation at all.
+//
+// A frame of our own for everyone we know, such as a change to our profile, is sealed to every group we are in and
+// to the DM of each user we know who is in none of them.  A group's key reaches all of its members through one
+// mailbox, however many they are, so nobody has to be left out and there is nothing to choose.  The price is that a
+// copy on one of our own encrypted devices is in all of those mailboxes at once, which tells that device they have
+// a member in common.
 func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 	me, ok := b.currentUser()
 	if !ok {
@@ -262,8 +269,48 @@ func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 	switch scope {
 	case scopeSync:
 		secrets = append(secrets, threadSecret{secret: syncThreadSecret(me.PrivateECDHKey), user: me.ID})
-	case scopeUser, scopeGlobal, scopeCustom:
+	case scopeUser, scopeCustom:
 		addUsers(b.getUsersInScope(br))
+	case scopeGlobal:
+		if br.getAuthor() != me.ID {
+			// Someone else's frame is passed on to the users it is for through the DM we share with each
+			addUsers(b.getUsersInScope(br))
+			break
+		}
+
+		var groupIDs []ID
+		err := b.database.Model(&groupKey{}).Distinct("group_id").Order("group_id").Pluck("group_id", &groupIDs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error loading the groups we hold keys for")
+		}
+		inAGroup := map[ID]bool{}
+		for _, groupID := range groupIDs {
+			gs, err := b.currentGroupState(groupID)
+			if err != nil || !gs.isMember(me.ID) {
+				continue
+			}
+			// The key is used as it stands.  A profile change is not what rotates a group's key: whoever left the
+			// group still knows us, and is sent the frame directly as well.
+			gk, ok := b.currentGroupKey(groupID)
+			if !ok {
+				continue
+			}
+			secrets = append(secrets, threadSecret{secret: gk.Key, group: groupID})
+			for _, member := range gs.users {
+				inAGroup[member] = true
+			}
+		}
+
+		// Someone only invited to a group may not hold its keys yet, so they are reached through their DM as well
+		outsideEveryGroup := []user{}
+		for _, u := range b.getUsersInScope(br) {
+			if !inAGroup[u.ID] {
+				outsideEveryGroup = append(outsideEveryGroup, u)
+			}
+		}
+		addUsers(outsideEveryGroup)
 	case scopeGroup, scopeGroupWithInvites:
 		groupID := br.getDestination(me.ID)
 		if err := b.ensureGroupKeyFresh(groupID); err != nil && !errors.Is(err, errUserNotInGroup) {
@@ -276,7 +323,7 @@ func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 		if !ok {
 			return nil, errGroupKeyUnavailable
 		}
-		secrets = append(secrets, threadSecret{secret: gk.Key})
+		secrets = append(secrets, threadSecret{secret: gk.Key, group: groupID})
 	default:
 		return nil, errors.New("unknown scope for sealing")
 	}
@@ -312,7 +359,24 @@ func (b *Bounce) secretsForOwner(secrets []threadSecret, owner ID) [][]byte {
 	chosen := [][]byte{}
 	ours := owner == NilID || owner == b.currentUserID()
 	for _, ts := range secrets {
-		if ours || ts.user == NilID || ts.user == owner {
+		if ours || (ts.user != NilID && ts.user == owner) {
+			chosen = append(chosen, ts.secret)
+			continue
+		}
+		if ts.group == NilID {
+			continue
+		}
+
+		// A group's mailbox goes on the host of a user who is in the group, or invited to it
+		gs, err := b.currentGroupState(ts.group)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": ts.group,
+				"error":    err.Error(),
+			}).Warn("cannot tell who is in a group, not using its mailbox on another user's encrypted device")
+			continue
+		}
+		if gs.isMember(owner) || gs.isInvited(owner) {
 			chosen = append(chosen, ts.secret)
 		}
 	}

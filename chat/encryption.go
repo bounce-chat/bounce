@@ -15,8 +15,6 @@ import (
 var encryptedDeviceCache = map[string]ID{}
 var encryptedDeviceCacheMutex sync.Mutex
 
-const maximumRecipients = 15
-
 type encryptedSyncDevice struct {
 	ID        ID     `gorm:"primary_key;"`
 	Address   string `gorm:"uniqueIndex"`
@@ -317,10 +315,9 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 func (b *Bounce) getUsersInGlobalScope(userID ID) []user {
 	var users []user
 	if userID == b.currentUserID() {
-		// TODO: select most active users, as opposed to random?
-		err := b.database.Clauses(clause.OrderBy{
-			Expression: clause.Expr{SQL: "RANDOM()"},
-		}).Limit(maximumRecipients).Find(&users).Error
+		// Anything global that we create is for every user we know.  None of them is left out: a frame is sealed
+		// to mailboxes, not to users, so how many of them there are does not limit it (see threadSecretsFor).
+		err := b.database.Find(&users).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
