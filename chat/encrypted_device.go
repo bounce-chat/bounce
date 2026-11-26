@@ -2,8 +2,6 @@ package chat
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/hkdf"
@@ -42,14 +40,6 @@ type authorizedUser struct {
 	ID         ID `gorm:"primary_key;"`
 	PublicKey  []byte
 	SigningKey []byte
-	OldKeys    []oldKey
-}
-
-type oldKey struct {
-	ID               ID `gorm:"primary_key;"`
-	AuthorizedUserID ID
-	PublicKey        []byte
-	SigningKey       []byte
 }
 
 func StartEncryptedDevice(network Network, platform Platform) {
@@ -263,7 +253,6 @@ func (b *Bounce) openEncryptedDatabase(databaseKey []byte) {
 	err = b.database.AutoMigrate(
 		&deliveryRecord{},
 		&authorizedUser{},
-		&oldKey{},
 		&encryptedFrame{},
 		&mailboxEntry{},
 		&ownerMailbox{},
@@ -1123,15 +1112,7 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 		return nil, false
 	}
 	dek := referenceOfferChallengeKey(shared)
-
-	dekBlock, err := aes.NewCipher(dek)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating block")
-		return nil, false
-	}
-	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	dekGCM, err := newGCM(dek)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1277,18 +1258,19 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
-	// Make sure that we offered a challenge to this device recently, and store it if we did
+	// Make sure that we offered a challenge to this device recently, and read both challenge and key atomically
 	referenceOfferChallengeMutex.Lock()
-	for peer, ts := range referenceOfferChallengeTime {
+	for p, ts := range referenceOfferChallengeTime {
 		if ts < time.Now().Add(-5*time.Minute).Unix() {
-			delete(referenceOfferChallengeTime, peer)
-			delete(referenceOfferChallengeMap, peer)
-			delete(referenceOfferKeyMap, peer)
+			delete(referenceOfferChallengeTime, p)
+			delete(referenceOfferChallengeMap, p)
+			delete(referenceOfferKeyMap, p)
 		}
 	}
 	challenge, ok := referenceOfferChallengeMap[peer]
+	challengePrivateKeyBytes, keyOK := referenceOfferKeyMap[peer]
 	referenceOfferChallengeMutex.Unlock()
-	if !ok {
+	if !ok || !keyOK {
 		// A slow peer answering a challenge that has since expired does this routinely
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -1296,18 +1278,8 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
-	// Find our challenge private key, their public key, and do an ECDH exchange to get a shared key
+	// Do an ECDH exchange between our challenge private key and their public key to get the shared secret
 	curve := ecdh.X25519()
-	referenceOfferChallengeMutex.Lock()
-	challengePrivateKeyBytes, ok := referenceOfferKeyMap[peer]
-	referenceOfferChallengeMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Error("no reference offer challenge key for peer")
-		return nil, false
-	}
-
 	challengePrivateKey, err := curve.NewPrivateKey(challengePrivateKeyBytes)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1332,14 +1304,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 	dek := referenceOfferChallengeKey(shared)
 
 	// Prepare to decrypt with this key
-	dekBlock, err := aes.NewCipher(dek)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating block")
-		return nil, false
-	}
-	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	dekGCM, err := newGCM(dek)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1476,19 +1441,6 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			}).Error("invalid key set in manage encrypted device")
 			go b.sendDirect(peer, &response)
 			return nil, false
-		}
-
-		// Create a copy of the old key
-		err = b.database.Create(&oldKey{
-			ID:               NewID(),
-			AuthorizedUserID: au.ID,
-			PublicKey:        au.PublicKey,
-			SigningKey:       au.SigningKey,
-		}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating old key for authorized user")
 		}
 
 		// Update the key in the database before revoking active owner sessions for the old key
@@ -1650,7 +1602,7 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 	}
 
 	if mkhr.Hash == hashString(blake3.Sum256(cu.PublicECDSAKey)) {
-		// Keys already match, sync up the authorized user state now
+		// Keys already match, clear any unmanageable warning
 		b.updateManageableWarning(peer, true)
 		return nil, false
 	}

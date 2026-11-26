@@ -2,8 +2,6 @@ package chat
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/hkdf"
 	"crypto/rand"
@@ -40,7 +38,7 @@ import (
 // or a block marks the chain stale; any member rotates it before the next time they need to use it.  Two members
 // may do that concurrently, which is fine: both secrets end up in the chain, and a frame sealed under one member's
 // intermediate key is still readable because every member can reconstruct the few intermediate states (see
-// groupKeyByID).
+// groupThreadSecrets in mailbox.go).
 //
 // Each frame that carries a secret also carries its hash, so a member whose unwrapped secret does not match knows
 // the author gave different members different secrets, rather than silently ending up in a forked group.
@@ -57,8 +55,6 @@ const groupKeyDomainChain = "bounce-group-key-chain"
 const groupKeyDomainResponse = "bounce-group-key-response"
 
 var errGroupKeyUnavailable = errors.New("group key not available")
-var errGroupKeyNotStale = errors.New("group key does not need rotation")
-var errGroupKeyRecipientMissingKey = errors.New("group member has no ECDH public key")
 
 // A wrap of key material for one user.  The material is encrypted with a key agreed between a per frame ephemeral
 // X25519 key and the user's long term ECDH key, so all of a user's devices can open it and nobody else can.
@@ -77,7 +73,6 @@ type groupKey struct {
 	Epoch   ID `gorm:"uniqueIndex:idx_group_keys_group_epoch,priority:2"`
 	Index   int
 	Key     []byte
-	KeyID   []byte `gorm:"index"`
 	Secret  []byte
 	SavedAt int64
 }
@@ -151,12 +146,6 @@ type groupKeyExport struct {
 
 type groupKeyChainExport struct {
 	Keys []groupKeyExport
-}
-
-// groupKeyIDFor names a key without revealing it, so sealed frames can say which key they used
-func groupKeyIDFor(key []byte) []byte {
-	sum := blake3.Sum256(key)
-	return sum[:16]
 }
 
 func initialGroupKey(secret []byte) []byte {
@@ -240,11 +229,7 @@ func wrapGroupKeyMaterial(plaintext []byte, domain string, recipients []user) ([
 		if err != nil {
 			return nil, nil, err
 		}
-		block, err := aes.NewCipher(kek)
-		if err != nil {
-			return nil, nil, err
-		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		gcm, err := newGCM(kek)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -287,11 +272,7 @@ func unwrapGroupKeyMaterial(ephemeralPublicKey []byte, wraps []groupKeyWrap, dom
 	if err != nil {
 		return nil, false
 	}
-	block, err := aes.NewCipher(kek)
-	if err != nil {
-		return nil, false
-	}
-	gcm, err := cipher.NewGCMWithRandomNonce(block)
+	gcm, err := newGCM(kek)
 	if err != nil {
 		return nil, false
 	}
@@ -495,60 +476,13 @@ func (b *Bounce) currentGroupKey(groupID ID) (groupKey, bool) {
 	return gk, true
 }
 
-// groupKeyByID finds the key a frame was sealed under.  Usually it is one of the keys in our chain.  When two
-// members rotated concurrently, a frame may have been sealed under an intermediate key that is not on the canonical
-// chain: the sender had applied one rotation but not the other.  Every member can still reconstruct those states,
-// because every secret is wrapped for every member, so on a miss we try ratcheting each key we hold with each
-// secret we hold, one and two steps deep.  Concurrent rotations are rare, so this is a handful of KDFs.
-func (b *Bounce) groupKeyByID(groupID ID, keyID []byte) ([]byte, bool) {
-	var gk groupKey
-	err := b.database.Where("group_id = ? AND key_id = ?", groupID, keyID).Take(&gk).Error
-	if err == nil {
-		return gk.Key, true
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Fatal("database error looking up group key by id")
-	}
-
-	chain := b.groupKeyChain(groupID)
-	secrets := [][]byte{}
-	for _, k := range chain {
-		if len(k.Secret) > 0 {
-			secrets = append(secrets, k.Secret)
-		}
-	}
-	for _, base := range chain {
-		for i, first := range secrets {
-			candidate := ratchetGroupKey(base.Key, first)
-			if bytes.Equal(groupKeyIDFor(candidate), keyID) {
-				return candidate, true
-			}
-			for j, second := range secrets {
-				if i == j {
-					continue
-				}
-				deeper := ratchetGroupKey(candidate, second)
-				if bytes.Equal(groupKeyIDFor(deeper), keyID) {
-					return deeper, true
-				}
-			}
-		}
-	}
-
-	return nil, false
-}
-
 // storeGroupKeys saves derived keys, replacing any existing key for the same epoch
 func (b *Bounce) storeGroupKeys(groupID ID, keys []groupKey) {
 	for i := range keys {
 		keys[i].GroupID = groupID
-		keys[i].KeyID = groupKeyIDFor(keys[i].Key)
 		err := b.database.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "group_id"}, {Name: "epoch"}},
-			DoUpdates: clause.AssignmentColumns([]string{"index", "key", "key_id", "secret"}),
+			DoUpdates: clause.AssignmentColumns([]string{"index", "key", "secret"}),
 		}).Create(&keys[i]).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -563,7 +497,6 @@ func (b *Bounce) storeGroupKeys(groupID ID, keys []groupKey) {
 func (b *Bounce) storeMissingGroupKeys(groupID ID, keys []groupKey) {
 	for i := range keys {
 		keys[i].GroupID = groupID
-		keys[i].KeyID = groupKeyIDFor(keys[i].Key)
 		err := b.database.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "group_id"}, {Name: "epoch"}},
 			DoNothing: true,
@@ -796,6 +729,7 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 	}
 
 	b.storeGroupKeys(groupID, derived)
+	go b.refreshMailboxRequests()
 
 	if !complete {
 		b.requestGroupKey(groupID)
@@ -915,7 +849,7 @@ func (b *Bounce) requestGroupKey(groupID ID) {
 	groupKeyRequestMutex.Unlock()
 
 	// The caller may hold the consensus store lock, so finish asynchronously
-	go func() {
+	b.background(func() {
 		gs, err := b.currentGroupState(groupID)
 		if err != nil {
 			return
@@ -931,7 +865,7 @@ func (b *Bounce) requestGroupKey(groupID ID) {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (b *Bounce) handleGroupKeyRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
@@ -1060,8 +994,9 @@ func (b *Bounce) handleGroupKeyResponse(peer string, payload []byte, _ bool) (br
 	}
 	b.storeMissingGroupKeys(response.GroupID, keys)
 
-	// Now that we have an entry point, derive anything newer from the stack
+	// Now that we have an entry point, derive anything newer from the stack and tell connected hosts about the new keys
 	b.deriveGroupKeys(response.GroupID)
+	go b.refreshMailboxRequests()
 
 	return nil, false
 }

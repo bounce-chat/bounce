@@ -619,6 +619,12 @@ func (b *Bounce) storeEncryptedChunkStorageRequest(sr encryptedChunkStorageReque
 		}).Warn("ignoring encrypted chunk storage request with invalid hash")
 		return false
 	}
+	if sr.DeleteAt < 0 {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring encrypted chunk storage request with negative delete_at")
+		return false
+	}
 	if len(sr.Labels) == 0 || len(sr.Labels) > maximumMailboxesPerCopy {
 		log.WithFields(log.Fields{
 			"peer":      peer,
@@ -628,6 +634,7 @@ func (b *Bounce) storeEncryptedChunkStorageRequest(sr encryptedChunkStorageReque
 	}
 
 	sr.ID = NewID()
+	seenLabel := map[string]bool{}
 	for _, label := range sr.Labels {
 		if len(label) != mailboxLabelSize {
 			log.WithFields(log.Fields{
@@ -635,6 +642,10 @@ func (b *Bounce) storeEncryptedChunkStorageRequest(sr encryptedChunkStorageReque
 			}).Warn("ignoring encrypted chunk storage request with a malformed mailbox label")
 			return false
 		}
+		if seenLabel[string(label)] {
+			continue
+		}
+		seenLabel[string(label)] = true
 		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
 			ID:    NewID(),
 			Hash:  sr.Hash,

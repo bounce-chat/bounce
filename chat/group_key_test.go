@@ -61,12 +61,13 @@ func waitForGroupInvite(t *testing.T, b *Bounce, groupID ID) {
 	t.Fatalf("%s never received invite for group %s", b.network.Address()[:8], groupID)
 }
 
-func keyIDs(chain []groupKey) [][]byte {
-	ids := [][]byte{}
-	for _, gk := range chain {
-		ids = append(ids, gk.KeyID)
+func canDeriveGroupKey(b *Bounce, groupID ID, want []byte) bool {
+	for _, secret := range b.groupThreadSecrets(groupID) {
+		if bytes.Equal(secret, want) {
+			return true
+		}
 	}
-	return ids
+	return false
 }
 
 func sameKeys(a, b []groupKey) bool {
@@ -192,8 +193,7 @@ func TestRemovingAUserRotatesTheKeyAwayFromThem(t *testing.T) {
 	// Bob, who received the removal (that is how he learns he is out), cannot derive it
 	time.Sleep(200 * time.Millisecond)
 	assert.Equal(t, 1, len(bob.groupKeyChain(groupID)))
-	_, found := bob.groupKeyByID(groupID, mine[1].KeyID)
-	assert.False(t, found)
+	assert.False(t, canDeriveGroupKey(bob, groupID, mine[1].Key))
 }
 
 func TestConcurrentRemovalsComposeUnderConsensus(t *testing.T) {
@@ -257,10 +257,9 @@ func TestConcurrentRemovalsComposeUnderConsensus(t *testing.T) {
 	assert.True(t, sameKeys(mine, alices), "remaining members must agree on the chain regardless of delivery order")
 
 	// Each removed user could unwrap one of the two secrets, but is missing the other link
-	final := mine[len(mine)-1].KeyID
+	final := mine[len(mine)-1].Key
 	for _, removed := range []*Bounce{bob, carol} {
-		_, found := removed.groupKeyByID(groupID, final)
-		assert.False(t, found)
+		assert.False(t, canDeriveGroupKey(removed, groupID, final))
 		assert.Equal(t, len(base), len(removed.groupKeyChain(groupID)))
 	}
 }
@@ -294,8 +293,7 @@ func TestLeavingMarksTheChainStaleUntilAMemberRotates(t *testing.T) {
 	alices := waitForGroupKeys(t, alice, groupID, 2)
 	assert.True(t, sameKeys(mine, alices))
 	time.Sleep(200 * time.Millisecond)
-	_, found := bob.groupKeyByID(groupID, mine[1].KeyID)
-	assert.False(t, found)
+	assert.False(t, canDeriveGroupKey(bob, groupID, mine[1].Key))
 
 	// Rotating again when nothing is stale is a no-op
 	assert.NoError(t, me.ensureGroupKeyFresh(groupID))
@@ -334,8 +332,7 @@ func TestBlockingAGroupMarksTheChainStaleLikeLeavingIt(t *testing.T) {
 	assert.NoError(t, me.ensureGroupKeyFresh(groupID))
 	mine := waitForGroupKeys(t, me, groupID, 2)
 	time.Sleep(200 * time.Millisecond)
-	_, found := bob.groupKeyByID(groupID, mine[1].KeyID)
-	assert.False(t, found, "the member who blocked the group can derive the key it rotated to")
+	assert.False(t, canDeriveGroupKey(bob, groupID, mine[1].Key), "the member who blocked the group can derive the key it rotated to")
 }
 
 func TestConcurrentRotationsKeepEveryIntermediateKeyReachable(t *testing.T) {
@@ -368,13 +365,11 @@ func TestConcurrentRotationsKeepEveryIntermediateKeyReachable(t *testing.T) {
 	mine := me.groupKeyChain(groupID)
 	assert.Equal(t, 3, len(mine))
 	for _, gk := range mine {
-		assert.False(t, bytes.Equal(gk.KeyID, aliceIntermediate.KeyID), "the intermediate key must not be canonical for this test to mean anything")
+		assert.False(t, bytes.Equal(gk.Key, aliceIntermediate.Key), "the intermediate key must not be canonical for this test to mean anything")
 	}
 
-	// But Me can still find it
-	reconstructed, found := me.groupKeyByID(groupID, aliceIntermediate.KeyID)
-	assert.True(t, found)
-	assert.True(t, bytes.Equal(reconstructed, aliceIntermediate.Key))
+	// But Me can still derive it for mailbox decryption
+	assert.True(t, canDeriveGroupKey(me, groupID, aliceIntermediate.Key))
 
 	// Once Alice learns of Me's rotation, both agree on the canonical chain
 	alice.handleUpdateGroup(me.network.Address(), meFrame, false)
@@ -428,7 +423,7 @@ func TestKeysAreStableAcrossAConsensusReload(t *testing.T) {
 
 	after := me.groupKeyChain(groupID)
 	assert.True(t, sameKeys(before, after))
-	assert.Equal(t, keyIDs(before), keyIDs(after))
+	assert.True(t, sameKeys(before, after))
 }
 
 func TestDemotingAnAdminDoesNotMarkTheGroupKeyStale(t *testing.T) {
@@ -546,8 +541,7 @@ func TestCurrentGroupKeyFollowsConsensusAfterARollback(t *testing.T) {
 	assert.Equal(t, initial.Key, current.Key)
 
 	// The rolled-back key stays stored so frames sealed under it before the rollback remain readable
-	_, stillReadable := me.groupKeyByID(groupID, rotated.KeyID)
-	assert.True(t, stillReadable)
+	assert.True(t, canDeriveGroupKey(me, groupID, rotated.Key))
 }
 
 func TestAReinvitedMemberDerivesTheChainFromTheirReinvite(t *testing.T) {

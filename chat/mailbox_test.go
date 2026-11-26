@@ -357,7 +357,7 @@ func TestOfflineSiblingDeviceBootstrapsNewContactsAndGroupsFromOwnersHost(t *tes
 	mySyncLabel := mailboxLabel(mySyncSecret)
 	siblingSyncOnly := &mailboxIndex{
 		byLabel: map[string]mailbox{
-			string(mySyncLabel): {Label: mySyncLabel, Secret: mySyncSecret, Kind: mailboxKindSync, Thread: me.currentUserID()},
+			string(mySyncLabel): {Label: mySyncLabel, Secret: mySyncSecret},
 		},
 	}
 

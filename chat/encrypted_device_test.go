@@ -467,16 +467,14 @@ func TestManagementKeysAreValidatedAndEveryActionIsAnswered(t *testing.T) {
 		assert.True(t, response.Authorized)
 		assert.False(t, response.Applied)
 		assert.Equal(t, []byte(signingPublic), storedKeys().SigningKey, "the device was re-keyed to a key that cannot manage it")
-		assert.Equal(t, int64(0), rowsIn(t, host, "old_keys"))
 	}
 
-	// A real change is applied, and the old keys are remembered
+	// A real change is applied
 	response = act(changeKeyTo(keySet{PublicECDSAKey: newSigningPublic, PublicECDHKey: newUserKey.PublicKey().Bytes()}))
 	assert.True(t, response.Authorized)
 	assert.True(t, response.Applied)
 	assert.Equal(t, []byte(newSigningPublic), storedKeys().SigningKey)
 	assert.Equal(t, newUserKey.PublicKey().Bytes(), storedKeys().PublicKey)
-	assert.Equal(t, int64(1), rowsIn(t, host, "old_keys"))
 }
 
 func TestClaimingADeviceNeedsAProfileAndARecentRequest(t *testing.T) {

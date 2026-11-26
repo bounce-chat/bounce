@@ -12,7 +12,7 @@ import (
 
 // What an encrypted device sends a reader for one stored frame: the copy's host ID, the sealed payload, and the
 // mailbox entry the reader asked for (see mailbox.go).  The reader derives the wrap key from the mailbox's secret
-// and epoch, unwraps the DEK, and opens the frame.
+// and the copy's host ID, unwraps the DEK, and opens the frame.
 type encryptedReceive struct {
 	ID         ID
 	Payload    []byte
@@ -124,6 +124,10 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 }
 
 func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	if b.peerIsBlocked(peer) {
+		return nil, false
+	}
+
 	var er encryptedReceive
 	err := msgpack.Unmarshal(payload, &er)
 	if err != nil {

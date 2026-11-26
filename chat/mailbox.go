@@ -74,19 +74,10 @@ const deviceThreadInfo = "bounce-device-thread"
 var errNoMailboxForLabel = errors.New("no mailbox secret for label")
 var errNothingToSealTo = errors.New("no mailboxes to seal the frame to")
 
-const (
-	mailboxKindSync = iota
-	mailboxKindDM
-	mailboxKindGroup
-	mailboxKindDevice
-)
-
 // A mailbox the local device can read: the secret its label derives from
 type mailbox struct {
 	Label  []byte
 	Secret []byte
-	Kind   int
-	Thread ID // the counterparty user, the group, or nil
 }
 
 type mailboxIndex struct {
@@ -520,14 +511,9 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 	// Our current key and any we have replaced, so frames sealed to a previous key still open
 	privateKeys := b.ownPrivateECDHKeys(me.PrivateECDHKey)
 
-	type source struct {
-		secret []byte
-		kind   int
-		thread ID
-	}
-	sources := []source{}
+	secrets := [][]byte{}
 	for _, priv := range privateKeys {
-		sources = append(sources, source{secret: syncThreadSecret(priv), kind: mailboxKindSync})
+		secrets = append(secrets, syncThreadSecret(priv))
 	}
 
 	var contacts []user
@@ -551,7 +537,7 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 				if err != nil {
 					continue
 				}
-				sources = append(sources, source{secret: secret, kind: mailboxKindDM, thread: contact.ID})
+				secrets = append(secrets, secret)
 			}
 		}
 	}
@@ -564,9 +550,7 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 		}).Fatal("database error loading group ids for mailbox index")
 	}
 	for _, groupID := range groupIDs {
-		for _, secret := range b.groupThreadSecrets(groupID) {
-			sources = append(sources, source{secret: secret, kind: mailboxKindGroup, thread: groupID})
-		}
+		secrets = append(secrets, b.groupThreadSecrets(groupID)...)
 	}
 
 	if myDevice, ok := b.getDeviceFromAddress(b.network.Address()); ok && len(myDevice.ECDHPrivateKey) > 0 {
@@ -585,12 +569,12 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 			if err != nil {
 				continue
 			}
-			sources = append(sources, source{secret: secret, kind: mailboxKindDevice, thread: sibling.ID})
+			secrets = append(secrets, secret)
 		}
 	}
 
-	for _, src := range sources {
-		mb := mailbox{Label: mailboxLabel(src.secret), Secret: src.secret, Kind: src.kind, Thread: src.thread}
+	for _, secret := range secrets {
+		mb := mailbox{Label: mailboxLabel(secret), Secret: secret}
 		if _, exists := index.byLabel[string(mb.Label)]; exists {
 			continue
 		}
@@ -998,13 +982,20 @@ func (b *Bounce) registerOwnerMailboxes(peer string) {
 	if !b.peerIsOwner(peer) {
 		return
 	}
-	for label := range b.peerLabels(peer) {
-		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ownerMailbox{ID: NewID(), Label: []byte(label), SavedAt: time.Now().Unix()}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving owner mailbox")
-		}
+	labels := b.peerLabels(peer)
+	if len(labels) == 0 {
+		return
+	}
+	now := time.Now().Unix()
+	rows := make([]ownerMailbox, 0, len(labels))
+	for label := range labels {
+		rows = append(rows, ownerMailbox{ID: NewID(), Label: []byte(label), SavedAt: now})
+	}
+	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(rows, mailboxLabelQueryBatch).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error saving owner mailboxes")
 	}
 }
 
