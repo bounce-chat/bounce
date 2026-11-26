@@ -24,9 +24,23 @@ var maxPayloadSize = 256 * 1024 * 1024
 var maximumPayloadFromKnownDevice = maxPayloadSize
 var maximumPayloadFromUnknownDevice = 1024 * 1024
 
+// Small update and control frames never need the 256 MiB transport cap reserved for files and catch-ups.
+const maximumSmallControlFramePayload = 64 * 1024
+
+var maximumPayloadByFrameType = map[uint16]uint32{
+	typeUpdateUser:      maximumSmallControlFramePayload,
+	typeUpdateDevice:    maximumSmallControlFramePayload,
+	typeUpdateDM:        maximumSmallControlFramePayload,
+	typeUpdateSettings:  maximumSmallControlFramePayload,
+	typeReadReceipt:     maximumSmallControlFramePayload,
+	typeTypingIndicator: maximumSmallControlFramePayload,
+	typeConfirmation:    maximumSmallControlFramePayload,
+}
+
 var errUnknownDeviceFrameTooLarge = errors.New("refusing to read frame from unknown device that is too large")
 var errKnownDeviceFrameTooLarge = errors.New("refusing to read frame from device that is too large")
 var errChunkFrameTooLarge = errors.New("chunk payload declared size larger than maximum allowed chunk size")
+var errFrameTypePayloadTooLarge = errors.New("frame payload declared size larger than maximum allowed for frame type")
 
 // Read a Bounce frame from the socket.  This will return the type of frame, the frame bytes, and any error
 func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
@@ -48,6 +62,17 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 			"size": payloadSize,
 		}).Warn("ignoring chunk that is larger than chunk size")
 		return 0, []byte{}, errChunkFrameTooLarge
+	}
+
+	if maxForType, ok := maximumPayloadByFrameType[typeInt]; ok && payloadSize > maxForType {
+		log.WithFields(log.Fields{
+			"peer":       conn.RemoteAddr().String(),
+			"frame_type": typeInt,
+			"size":       payloadSize,
+			"max_size":   maxForType,
+		}).Warn(errFrameTypePayloadTooLarge.Error())
+		conn.Close()
+		return 0, []byte{}, errFrameTypePayloadTooLarge
 	}
 
 	if deviceIsKnown {

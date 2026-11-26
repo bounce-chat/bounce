@@ -1132,7 +1132,11 @@ func (b *Bounce) GetInitialState() InitialState {
 
 	// Load all update users
 	uus := []updateUser{}
-	err = b.database.Order("timestamp asc").Find(&uus).Error
+	err = b.database.
+		Select("id", "target", "type", "data", "previous_data", "timestamp").
+		Where("type IN ?", []uint16{updateUserTypeUpdateName, updateUserTypeUpdateImage}).
+		Order("timestamp asc").
+		Find(&uus).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1453,7 +1457,11 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 
 	// Load all update users
 	uus := []updateUser{}
-	err = b.database.Order("timestamp asc").Where("timestamp >= ? AND (target = ? OR target = ?)", u.IntroductionTime, b.currentUserID(), userID).Find(&uus).Error
+	err = b.database.
+		Select("id", "target", "type", "data", "previous_data", "timestamp").
+		Where("type IN ? AND timestamp >= ? AND (target = ? OR target = ?)", []uint16{updateUserTypeUpdateName, updateUserTypeUpdateImage}, u.IntroductionTime, b.currentUserID(), userID).
+		Order("timestamp asc").
+		Find(&uus).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -170,6 +170,14 @@ func (us *updateSettings) validPayload() error {
 }
 
 func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	if len(payload) > maximumSmallControlFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring update settings larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	updateSettingsMutex.Lock()
 	defer updateSettingsMutex.Unlock()
 

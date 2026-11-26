@@ -16,7 +16,21 @@ import (
 	"gorm.io/gorm"
 )
 
+const maximumUpdateUserHistoryPerType = 100
+const maximumReplaceKeysDataSize = 1024
+
+var (
+	updateUserRateLimitCount  = 30
+	updateUserRateLimitWindow = time.Minute
+)
+
+type updateUserRateKey struct {
+	receiver string
+	target   ID
+}
+
 var updateUserMutex sync.Mutex
+var updateUserRateTimestamps = map[updateUserRateKey][]time.Time{}
 
 var updateUserTypeUpdateName = uint16(0)
 var updateUserTypeUpdateImage = uint16(1)
@@ -73,6 +87,13 @@ func (uu *updateUser) BeforeCreate(tx *gorm.DB) error {
 	uu.SavedAt = time.Now().Unix()
 
 	return nil
+}
+
+func (uu *updateUser) AfterDelete(tx *gorm.DB) error {
+	if uu.ID == NilID {
+		return nil
+	}
+	return tx.Where("frame_id = ? AND frame_type = ?", uu.ID, typeUpdateUser).Delete(&deliveryRecord{}).Error
 }
 
 func (uu *updateUser) getID() ID {
@@ -148,6 +169,9 @@ func (uu *updateUser) validPayload() error {
 			return errInvalidDeviceName
 		}
 	case updateUserTypeReplaceKeys:
+		if len(uu.Data) > maximumReplaceKeysDataSize {
+			return errInvalidKeyMaterial
+		}
 		var ks keySet
 		if err := msgpack.Unmarshal(uu.Data, &ks); err != nil {
 			return err
@@ -162,6 +186,9 @@ func (uu *updateUser) validPayload() error {
 		if _, err := curve.NewPublicKey(ks.PublicECDHKey); err != nil {
 			return errInvalidKeyMaterial
 		}
+		if len(ks.Kek) != 0 && len(ks.Kek) != 32 {
+			return errInvalidKeyMaterial
+		}
 	case updateUserTypeReplaceECDHPublicKey:
 		if _, err := ecdh.X25519().NewPublicKey(uu.Data); err != nil {
 			return errInvalidKeyMaterial
@@ -174,6 +201,14 @@ func (uu *updateUser) validPayload() error {
 }
 
 func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	if len(payload) > maximumSmallControlFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring update user larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	updateUserMutex.Lock()
 	defer updateUserMutex.Unlock()
 
@@ -259,6 +294,17 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 		return nil, false
 	}
 
+	// Sync-scoped user updates (e.g. ReplaceKeys, SetEncryptedDeviceName) only belong to our own user.
+	if uu.getScope(b.currentUserID()) == scopeSync && uu.Target != b.currentUserID() {
+		log.WithFields(log.Fields{
+			"id":     uu.ID,
+			"target": uu.Target,
+			"type":   uu.Type,
+			"peer":   peer,
+		}).Warn("ignoring sync-scoped update user for another user")
+		return nil, false
+	}
+
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUU updateUser
 	err = b.database.Where("id = ?", uu.ID).First(&existingUU).Error
@@ -268,6 +314,66 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up update user")
+	}
+
+	// Validate the payload before checking history bounds or consuming live rate-limit budget.
+	if err = uu.validPayload(); err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"user_id": uu.Target,
+		}).Error("error validating update user payload")
+		return nil, false
+	}
+
+	// If we already hold the maximum history for this (target, type) and this frame is older than the oldest
+	// kept entry, it would be pruned immediately.  Ack so peers stop re-offering it and skip storing/replaying.
+	if uu.Type != updateUserTypeReplaceKeys {
+		var cutoff updateUser
+		err = b.database.
+			Select("id", "timestamp").
+			Where("target = ? AND type = ?", uu.Target, uu.Type).
+			Order("timestamp DESC, id DESC").
+			Offset(maximumUpdateUserHistoryPerType - 1).
+			Limit(1).
+			Take(&cutoff).Error
+		if err == nil {
+			if uu.Timestamp < cutoff.Timestamp || (uu.Timestamp == cutoff.Timestamp && bytes.Compare(uu.ID[:], cutoff.ID[:]) < 0) {
+				go b.sendAck(peer, typeUpdateUser, uu.ID)
+				return nil, false
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking update user history cutoff")
+		}
+	}
+
+	// Rate-limit live remote updates per user to prevent CPU/UI/gossip floods, while leaving catch-ups
+	// unthrottled so offline devices can churn through legitimate historical updates quickly.
+	if !catchUp && uu.Target != b.currentUserID() {
+		now := time.Now()
+		windowCutoff := now.Add(-updateUserRateLimitWindow)
+		key := updateUserRateKey{
+			receiver: b.network.Address(),
+			target:   uu.Target,
+		}
+		recent := updateUserRateTimestamps[key]
+		kept := recent[:0]
+		for _, ts := range recent {
+			if ts.After(windowCutoff) {
+				kept = append(kept, ts)
+			}
+		}
+		if len(kept) >= updateUserRateLimitCount {
+			updateUserRateTimestamps[key] = kept
+			log.WithFields(log.Fields{
+				"id":     uu.ID,
+				"target": uu.Target,
+				"peer":   peer,
+			}).Warn("rate limiting live update user from remote user")
+			return nil, false
+		}
+		updateUserRateTimestamps[key] = append(kept, now)
 	}
 
 	// Save this update, apply the change to the database, and inform the UI
@@ -315,6 +421,35 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error saving update user")
+	}
+
+	// Keep per-(target, type) history bounded, except ReplaceKeys which holds our own historical decryption keys.
+	if uu.Type != updateUserTypeReplaceKeys {
+		var stale []updateUser
+		err = b.database.
+			Select("id", "type").
+			Where("target = ? AND type = ?", uu.Target, uu.Type).
+			Order("timestamp DESC, id DESC").
+			Offset(maximumUpdateUserHistoryPerType).
+			Limit(maximumUpdateUserHistoryPerType).
+			Find(&stale).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting update users to prune")
+		}
+		for _, old := range stale {
+			err = b.database.Delete(&old).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    old.ID,
+					"error": err.Error(),
+				}).Fatal("database error pruning update user")
+			}
+			if old.Type == updateUserTypeUpdateName || old.Type == updateUserTypeUpdateImage {
+				b.ui.DeleteItem(old.ID)
+			}
+		}
 	}
 
 	// Display this update in the UI history
@@ -428,7 +563,7 @@ func (b *Bounce) updateUserState(userID ID) {
 
 	// Get all update users for this user
 	var uus []updateUser
-	err = b.database.Where("target = ?", userID).Order("timestamp asc, id").Find(&uus).Error
+	err = b.database.Select("id", "target", "type", "data", "signer", "timestamp").Where("target = ?", userID).Order("timestamp asc, id").Find(&uus).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id": userID,

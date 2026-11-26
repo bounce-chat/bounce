@@ -143,6 +143,14 @@ func (ud *updateDevice) validPayload() error {
 }
 
 func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	if len(payload) > maximumSmallControlFramePayload {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(payload),
+		}).Warn("ignoring update device larger than maximum allowed payload size")
+		return nil, false
+	}
+
 	updateDeviceMutex.Lock()
 	defer updateDeviceMutex.Unlock()
 
