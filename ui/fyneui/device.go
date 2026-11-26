@@ -48,6 +48,11 @@ func (ui *ui) DeviceLastSeen(id chat.ID, timestamp int64) {
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
+// The warning showing for each encrypted device we cannot manage.  The engine reports such a device every time it
+// asks the device for its key and gets one we do not hold, so the warning is shown once and left up until it is
+// answered or the device can be managed again.  Only touched on the UI thread.
+var unmanageableWarnings = make(map[chat.ID]dialog.Dialog)
+
 func (ui *ui) EncryptedDeviceUnmanageable(id chat.ID) {
 	ui.devices.Lock()
 	d, ok := ui.devices.devices[id]
@@ -60,26 +65,38 @@ func (ui *ui) EncryptedDeviceUnmanageable(id chat.ID) {
 	}
 
 	fyne.Do(func() {
-		ui.showDialog(
-			dialog.NewCustomConfirm(
-				"Encrypted Device Management Error",
-				"Remove Device",
-				"Keep Device",
-				container.NewVBox(
-					widget.NewLabel("An encrypted device management action failed because we don't have the correct key.  Remove this encrypted device?"),
-					widget.NewLabel(d.Address),
-				),
-				func(remove bool) {
-					if remove {
-						ui.bounce.RevokeDevice(id)
-					}
-				},
-				ui.window,
+		if _, showing := unmanageableWarnings[id]; showing {
+			return
+		}
+
+		warning := dialog.NewCustomConfirm(
+			"Encrypted Device Management Error",
+			"Remove Device",
+			"Keep Device",
+			container.NewVBox(
+				widget.NewLabel("An encrypted device management action failed because we don't have the correct key.  Remove this encrypted device?"),
+				widget.NewLabel(d.Address),
 			),
-			nil,
+			func(remove bool) {
+				if remove {
+					ui.bounce.RevokeDevice(id)
+				}
+			},
+			ui.window,
 		)
+		unmanageableWarnings[id] = warning
+		ui.showDialog(warning, func() {
+			delete(unmanageableWarnings, id)
+		})
 	})
 }
 
 func (ui *ui) EncryptedDeviceManageable(id chat.ID) {
+	fyne.Do(func() {
+		warning, showing := unmanageableWarnings[id]
+		if showing {
+			// Hiding it answers it with "Keep Device"
+			warning.Hide()
+		}
+	})
 }
