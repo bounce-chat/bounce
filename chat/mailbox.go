@@ -313,17 +313,52 @@ func (b *Bounce) threadSecretsFor(br broadcastable) ([]threadSecret, error) {
 		addUsers(outsideEveryGroup)
 	case scopeGroup, scopeGroupWithInvites:
 		groupID := br.getDestination(me.ID)
-		if err := b.ensureGroupKeyFresh(groupID); err != nil && !errors.Is(err, errUserNotInGroup) {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Warn("could not rotate stale group key before sealing")
+		var gk groupKey
+		var ok bool
+		switch br.getType() {
+		case typeGroupCreation:
+			// The creation establishes the group's initial key K_0
+			gk, ok = b.groupKeyForEpoch(groupID, groupID)
+			if !ok {
+				gk, ok = b.currentGroupKey(groupID)
+			}
+		case typeUpdateGroup:
+			// Each consensus update is sealed under the key active just before it in consensus, so an offline
+			// member holding K_{n-1} can open the update that introduces K_n (and any consensus prerequisite
+			// before it) rather than deadlocking on the key the update itself establishes.
+			gk, ok = b.groupKeyBeforeUpdate(groupID, br.getID())
+			if !ok {
+				gk, ok = b.currentGroupKey(groupID)
+			}
+		default:
+			if err := b.ensureGroupKeyFresh(groupID); err != nil && !errors.Is(err, errUserNotInGroup) {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+					"error":    err.Error(),
+				}).Warn("could not rotate stale group key before sealing")
+			}
+			gk, ok = b.currentGroupKey(groupID)
 		}
-		gk, ok := b.currentGroupKey(groupID)
 		if !ok {
 			return nil, errGroupKeyUnavailable
 		}
 		secrets = append(secrets, threadSecret{secret: gk.Key, group: groupID})
+
+		// Pending invitees do not hold the group key chain until they receive their invite.  Include our DM
+		// mailbox with each pending invitee for GroupWithInvites frames so they can receive the group creation,
+		// consensus updates, and their invite through either their encrypted device or ours while we are offline.
+		if scope == scopeGroupWithInvites {
+			if gs, err := b.currentGroupState(groupID); err == nil && len(gs.invites) > 0 {
+				var invitees []user
+				err := b.database.Select("id", "public_ecdh_key").Where("id IN ?", gs.invites).Find(&invitees).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error loading group invitees for sealing")
+				}
+				addUsers(invitees)
+			}
+		}
 	default:
 		return nil, errors.New("unknown scope for sealing")
 	}
@@ -406,6 +441,47 @@ func currentLabels(secrets [][]byte) [][]byte {
 	return labels
 }
 
+func (b *Bounce) ownPrivateECDHKeys(current []byte) [][]byte {
+	keys := [][]byte{}
+	if len(current) > 0 {
+		keys = append(keys, current)
+	}
+	for _, old := range b.encryptionKeyHistory() {
+		if len(old) == 0 || bytes.Equal(old, current) {
+			continue
+		}
+		keys = append(keys, old)
+	}
+	return keys
+}
+
+func (b *Bounce) contactPublicECDHKeysByUser() map[ID][][]byte {
+	byUser := map[ID][][]byte{}
+	var keyUpdates []updateUser
+	err := b.database.Select("target", "data").Where("type = ?", updateUserTypeReplaceECDHPublicKey).Find(&keyUpdates).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error loading contact ECDH key history")
+	}
+	for _, uu := range keyUpdates {
+		if len(uu.Data) == 0 {
+			continue
+		}
+		dup := false
+		for _, existing := range byUser[uu.Target] {
+			if bytes.Equal(existing, uu.Data) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			byUser[uu.Target] = append(byUser[uu.Target], uu.Data)
+		}
+	}
+	return byUser
+}
+
 // mailboxIndex builds every mailbox this device can read for the recent epochs: its own sync mailbox, a DM mailbox
 // per contact, a mailbox per key of every group it is in, and a device mailbox per sibling device, each for the
 // current epoch, the next one, and the lookback window.  This is what a device asks a host for, and what it uses
@@ -418,12 +494,7 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 	}
 
 	// Our current key and any we have replaced, so frames sealed to a previous key still open
-	privateKeys := [][]byte{me.PrivateECDHKey}
-	for _, old := range b.encryptionKeyHistory() {
-		if !bytes.Equal(old, me.PrivateECDHKey) {
-			privateKeys = append(privateKeys, old)
-		}
-	}
+	privateKeys := b.ownPrivateECDHKeys(me.PrivateECDHKey)
 
 	type source struct {
 		secret []byte
@@ -442,13 +513,22 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 			"error": err.Error(),
 		}).Fatal("database error loading contacts for mailbox index")
 	}
+	contactKeyHistory := b.contactPublicECDHKeysByUser()
 	for _, contact := range contacts {
-		for _, priv := range privateKeys {
-			secret, err := b.dmThreadSecret(priv, contact.PublicECDHKey)
-			if err != nil {
-				continue
+		pubKeys := [][]byte{contact.PublicECDHKey}
+		for _, oldPub := range contactKeyHistory[contact.ID] {
+			if !bytes.Equal(oldPub, contact.PublicECDHKey) {
+				pubKeys = append(pubKeys, oldPub)
 			}
-			sources = append(sources, source{secret: secret, kind: mailboxKindDM, thread: contact.ID})
+		}
+		for _, pub := range pubKeys {
+			for _, priv := range privateKeys {
+				secret, err := b.dmThreadSecret(priv, pub)
+				if err != nil {
+					continue
+				}
+				sources = append(sources, source{secret: secret, kind: mailboxKindDM, thread: contact.ID})
+			}
 		}
 	}
 
@@ -508,9 +588,12 @@ func (b *Bounce) clearLabelsForThread(thread ID, before int64) [][]byte {
 	if !ok {
 		return nil
 	}
+	privateKeys := b.ownPrivateECDHKeys(me.PrivateECDHKey)
 	secrets := [][]byte{}
 	if thread == NilID {
-		secrets = append(secrets, syncThreadSecret(me.PrivateECDHKey))
+		for _, priv := range privateKeys {
+			secrets = append(secrets, syncThreadSecret(priv))
+		}
 	} else if len(b.groupKeyChain(thread)) > 0 {
 		secrets = b.groupThreadSecrets(thread)
 	} else {
@@ -519,19 +602,35 @@ func (b *Bounce) clearLabelsForThread(thread ID, before int64) [][]byte {
 		if err != nil {
 			return nil
 		}
-		secret, err := b.dmThreadSecret(me.PrivateECDHKey, counterparty.PublicECDHKey)
-		if err != nil {
-			return nil
+		pubKeys := [][]byte{counterparty.PublicECDHKey}
+		for _, oldPub := range b.contactPublicECDHKeysByUser()[counterparty.ID] {
+			if !bytes.Equal(oldPub, counterparty.PublicECDHKey) {
+				pubKeys = append(pubKeys, oldPub)
+			}
 		}
-		secrets = append(secrets, secret)
+		for _, pub := range pubKeys {
+			for _, priv := range privateKeys {
+				secret, err := b.dmThreadSecret(priv, pub)
+				if err != nil {
+					continue
+				}
+				secrets = append(secrets, secret)
+			}
+		}
 	}
 
 	// Only epochs that ended before the timestamp
 	lastComplete := mailboxEpoch(before) - 1
 	labels := [][]byte{}
+	seen := map[string]bool{}
 	for _, secret := range secrets {
 		for epoch := lastComplete; epoch >= lastComplete-mailboxLookbackEpochs && epoch >= 0; epoch-- {
-			labels = append(labels, mailboxLabel(secret, epoch))
+			label := mailboxLabel(secret, epoch)
+			if seen[string(label)] {
+				continue
+			}
+			seen[string(label)] = true
+			labels = append(labels, label)
 		}
 	}
 	return labels
@@ -697,6 +796,7 @@ func (mi *mailboxIndex) open(er encryptedReceive) (frame, error) {
 // A host acks a stored copy by the random ID we gave that copy, so the sender remembers which frame each copy was
 // for long enough to turn the host's ack into delivery tracking for the real frame.
 type sealedCopy struct {
+	host      string
 	reference frameReference
 	sealedAt  int64
 }
@@ -706,7 +806,7 @@ var sealedCopiesMutex sync.Mutex
 
 const sealedCopyMemorySeconds = int64(60 * 60)
 
-func recordSealedCopy(hostID ID, br broadcastable) {
+func recordSealedCopy(hostID ID, host string, br broadcastable) {
 	sealedCopiesMutex.Lock()
 	defer sealedCopiesMutex.Unlock()
 	now := time.Now().Unix()
@@ -717,17 +817,22 @@ func recordSealedCopy(hostID ID, br broadcastable) {
 			}
 		}
 	}
-	sealedCopies[hostID] = sealedCopy{reference: frameReference{FrameID: br.getID(), Type: br.getType()}, sealedAt: now}
+	sealedCopies[hostID] = sealedCopy{
+		host:      host,
+		reference: frameReference{FrameID: br.getID(), Type: br.getType()},
+		sealedAt:  now,
+	}
 }
 
-func sealedCopyReference(hostID ID) (frameReference, bool) {
+func sealedCopyReference(hostID ID, peer string) (frameReference, bool) {
 	sealedCopiesMutex.Lock()
 	defer sealedCopiesMutex.Unlock()
 	copy, ok := sealedCopies[hostID]
-	if ok {
-		delete(sealedCopies, hostID)
+	if !ok || (copy.host != "" && copy.host != peer) {
+		return frameReference{}, false
 	}
-	return copy.reference, ok
+	delete(sealedCopies, hostID)
+	return copy.reference, true
 }
 
 // forgetSealedCopy drops the record of a copy that was sealed but never sent

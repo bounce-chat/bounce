@@ -845,3 +845,254 @@ func TestAFrameFromAnEncryptedDeviceIsNeverAckedByItsOwnID(t *testing.T) {
 		assert.False(t, namesTheDraft(frameType, payload), "the encrypted device was told the ID or type of a frame it stored")
 	}
 }
+
+// A key-rotating group update must be sealed under the key active just before it, so an offline member holding K_0
+// can open the update that introduces K_1, derive K_1, refresh their mailboxes, and open subsequent messages sealed
+// under K_1 — while the removed member learns they were removed via K_0 and cannot open anything sealed under K_1.
+func TestAnOfflineMemberReceivesAGroupRotationAndFollowUpMessageThroughAHost(t *testing.T) {
+	quickReferenceRetries(t)
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	for _, b := range []*Bounce{me, alice, bob} {
+		waitForGroupKeys(t, b, groupID, 1)
+	}
+
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, me, host, key)
+	waitForOwnerMailboxes(t, host)
+	waitForUserToKnowEncryptedDevice(t, alice, me.currentUserID(), host.network.Address())
+	waitForUserToKnowEncryptedDevice(t, bob, me.currentUserID(), host.network.Address())
+
+	// Alice and Bob go completely offline while Me removes Bob (rotating K_0 -> K_1) and sends a follow-up message
+	disconnectFrom(t, me, alice)
+	disconnectFrom(t, me, bob)
+	disconnectFrom(t, alice, bob)
+	disconnectFrom(t, alice, host)
+	disconnectFrom(t, bob, host)
+
+	assert.NoError(t, me.RemoveUserFromGroup(groupID, bob.currentUserID()))
+	waitForGroupKeys(t, me, groupID, 2)
+	assert.NoError(t, me.SendGroupMessage(groupID, "after bob was removed", nil, NilID))
+
+	// Wait until both the removal update and the follow-up message have been stored on Me's host
+	var removal updateGroup
+	assert.NoError(t, me.database.Where("target = ? AND type = ?", groupID, updateGroupTypeRemoveUser).First(&removal).Error)
+	var gm groupMessage
+	assert.NoError(t, me.database.First(&gm, "text = ?", "after bob was removed").Error)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if me.frameIsDeliveredTo(removal.ID, typeUpdateGroup, host.network.Address()) &&
+			me.frameIsDeliveredTo(gm.ID, typeGroupMessage, host.network.Address()) {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.True(t, me.frameIsDeliveredTo(removal.ID, typeUpdateGroup, host.network.Address()))
+	assert.True(t, me.frameIsDeliveredTo(gm.ID, typeGroupMessage, host.network.Address()))
+
+	// Me goes offline; Alice connects ONLY to Me's host
+	disconnectFrom(t, me, host)
+	connectTo(t, alice, host.network.Address())
+
+	// Alice must receive the removal under K_0, derive K_1, refresh her mailboxes, and receive the follow-up message
+	alicesKeys := waitForGroupKeys(t, alice, groupID, 2)
+	assert.True(t, sameKeys(me.groupKeyChain(groupID), alicesKeys))
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && countWhere(t, alice, &groupMessage{}, "id = ?", gm.ID) == 0 {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, int64(1), countWhere(t, alice, &groupMessage{}, "id = ?", gm.ID), "offline member must receive follow-up message after rotation through host")
+
+	// Bob connects ONLY to Me's host: he receives the removal under K_0, cannot derive K_1, and never gets the message
+	connectTo(t, bob, host.network.Address())
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if countWhere(t, bob, &updateGroup{}, "id = ?", removal.ID) > 0 {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, int64(1), countWhere(t, bob, &updateGroup{}, "id = ?", removal.ID), "removed member must receive removal through host")
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, 1, len(bob.groupKeyChain(groupID)))
+	assert.Equal(t, int64(0), countWhere(t, bob, &groupMessage{}, "id = ?", gm.ID), "removed member must not receive messages sealed under K_1")
+}
+
+// An offline user invited to a group does not yet hold the group's key chain.  They must still receive the invite
+// and group creation through an encrypted device — both through their own encrypted device and through the inviter's
+// encrypted device (where the group creation was already stored under the group key before the invite existed).
+func TestAnOfflineUserReceivesAGroupInviteThroughAnEncryptedDevice(t *testing.T) {
+	quickReferenceRetries(t)
+
+	t.Run("via invitees own encrypted device", func(t *testing.T) {
+		alice, carol := connectUsers(t)
+		hostC, key := newEncryptedDevice(t)
+		claimEncryptedDevice(t, carol, hostC, key)
+		waitForOwnerMailboxes(t, hostC)
+		waitForUserToKnowEncryptedDevice(t, alice, carol.currentUserID(), hostC.network.Address())
+		connectTo(t, alice, hostC.network.Address())
+
+		// Carol goes completely offline while Alice creates a group and invites her
+		disconnectFrom(t, alice, carol)
+		disconnectFrom(t, carol, hostC)
+
+		assert.NoError(t, alice.CreateGroup(NewGroup{Name: "Offline Invite Group"}))
+		var g group
+		assert.NoError(t, alice.database.First(&g, "name = ?", "Offline Invite Group").Error)
+		waitForGroupKeys(t, alice, g.ID, 1)
+		assert.NoError(t, alice.InviteUserToGroup(g.ID, carol.currentUserID()))
+
+		var invite updateGroup
+		assert.NoError(t, alice.database.Where("target = ? AND type = ?", g.ID, updateGroupTypeInviteUser).First(&invite).Error)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if alice.frameIsDeliveredTo(g.ID, typeGroupCreation, hostC.network.Address()) &&
+				alice.frameIsDeliveredTo(invite.ID, typeUpdateGroup, hostC.network.Address()) {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		assert.True(t, alice.frameIsDeliveredTo(g.ID, typeGroupCreation, hostC.network.Address()), "hostC must accept groupCreation via Carol's DM mailbox")
+		assert.True(t, alice.frameIsDeliveredTo(invite.ID, typeUpdateGroup, hostC.network.Address()), "hostC must accept invite via Carol's DM mailbox")
+
+		// Alice goes offline; Carol connects ONLY to hostC
+		disconnectFrom(t, alice, hostC)
+		connectTo(t, carol, hostC.network.Address())
+
+		carolsKeys := waitForGroupKeys(t, carol, g.ID, 1)
+		assert.True(t, sameKeys(alice.groupKeyChain(g.ID), carolsKeys))
+		gs, err := carol.currentGroupState(g.ID)
+		assert.NoError(t, err)
+		assert.True(t, gs.isInvited(carol.currentUserID()))
+	})
+
+	t.Run("via inviters encrypted device", func(t *testing.T) {
+		alice, dave := connectUsers(t)
+		hostA, key := newEncryptedDevice(t)
+		claimEncryptedDevice(t, alice, hostA, key)
+		waitForOwnerMailboxes(t, hostA)
+		waitForUserToKnowEncryptedDevice(t, dave, alice.currentUserID(), hostA.network.Address())
+
+		// Alice creates the group BEFORE inviting Dave, so groupCreation is stored on hostA under K_0 alone
+		assert.NoError(t, alice.CreateGroup(NewGroup{Name: "Preexisting Group"}))
+		var g group
+		assert.NoError(t, alice.database.First(&g, "name = ?", "Preexisting Group").Error)
+		waitForGroupKeys(t, alice, g.ID, 1)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) && !alice.frameIsDeliveredTo(g.ID, typeGroupCreation, hostA.network.Address()) {
+			time.Sleep(25 * time.Millisecond)
+		}
+		assert.True(t, alice.frameIsDeliveredTo(g.ID, typeGroupCreation, hostA.network.Address()))
+
+		// Dave goes offline; Alice invites Dave, the invite reaches hostA, then Alice goes offline
+		disconnectFrom(t, alice, dave)
+		disconnectFrom(t, dave, hostA)
+		assert.NoError(t, alice.InviteUserToGroup(g.ID, dave.currentUserID()))
+		var invite updateGroup
+		assert.NoError(t, alice.database.Where("target = ? AND type = ?", g.ID, updateGroupTypeInviteUser).First(&invite).Error)
+		deadline = time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) && !alice.frameIsDeliveredTo(invite.ID, typeUpdateGroup, hostA.network.Address()) {
+			time.Sleep(25 * time.Millisecond)
+		}
+		assert.True(t, alice.frameIsDeliveredTo(invite.ID, typeUpdateGroup, hostA.network.Address()))
+
+		// Dave connects ONLY to hostA: he gets the invite via DM, bootstraps K_0, refreshes mailboxes, and gets groupCreation
+		disconnectFrom(t, alice, hostA)
+		connectTo(t, dave, hostA.network.Address())
+
+		deadline = time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if gs, err := dave.currentGroupState(g.ID); err == nil && gs.isInvited(dave.currentUserID()) {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		gs, err := dave.currentGroupState(g.ID)
+		assert.NoError(t, err)
+		assert.True(t, gs.isInvited(dave.currentUserID()))
+		assert.True(t, sameKeys(alice.groupKeyChain(g.ID), dave.groupKeyChain(g.ID)))
+	})
+}
+
+// Clearing one conversation on an encrypted device removes only that conversation's mailbox entries.  A multi-mailbox
+// copy (such as our own profile update on our own host) survives in its other mailboxes until every mailbox it belongs
+// to is cleared.
+func TestClearingOneConversationLeavesMultiMailboxGlobalFramesForOtherConversations(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	waitForGroupKeys(t, me, groupID, 1)
+	waitForGroupKeys(t, alice, groupID, 1)
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+	introduce(t, me, carol)
+
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, me, host, key)
+	waitForOwnerMailboxes(t, host)
+
+	// Disconnect Me so UpdateProfileName does not live-broadcast under a different copy ID before we store efGlobal
+	disconnectFrom(t, me, host)
+	epochStart := int64(200) * mailboxEpochSeconds
+	mailboxClock = func() int64 { return epochStart + 100 }
+	t.Cleanup(func() { mailboxClock = func() int64 { return time.Now().Unix() } })
+
+	// Seal a profile update (global frame: in Group G AND in DM(me, carol)) and a DM with Carol onto Me's host
+	assert.NoError(t, me.UpdateProfileName("New Name"))
+	var profileUpdate updateUser
+	assert.NoError(t, me.database.Where("target = ? AND type = ?", me.currentUserID(), updateUserTypeUpdateName).First(&profileUpdate).Error)
+	efGlobal := sealForHost(t, me, &profileUpdate, host)
+	assert.Equal(t, 2, len(efGlobal.Mailboxes))
+	efGlobalPayload, _ := msgpack.Marshal(efGlobal)
+	host.handleEncryptedFrame(me.network.Address(), efGlobalPayload, false)
+
+	dmWithCarol := signedDM(me, carol.currentUserID(), "just between us")
+	efDM := sealForHost(t, me, dmWithCarol, host)
+	efDMPayload, _ := msgpack.Marshal(efDM)
+	host.handleEncryptedFrame(me.network.Address(), efDMPayload, false)
+
+	// Move to the next epoch and clear ONLY the DM with Carol
+	clearAt := epochStart + mailboxEpochSeconds + 100
+	mailboxClock = func() int64 { return clearAt }
+	clearLabels := me.clearLabelsForThread(xor(me.currentUserID(), carol.currentUserID()), clearAt)
+	clearFrame := encryptedClearBefore{ID: NewID(), Labels: clearLabels}
+	host.handleEncryptedClearBefore(carol.network.Address(), clearFrame.getPayload(), false)
+
+	// The DM copy is completely gone, while the profile update copy survives in Group G's mailbox only
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", efDM.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", efGlobal.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", efGlobal.ID))
+
+	// Alice (in Group G) is still offered the profile update; Carol (cleared DM) is not
+	aliceReq, _ := msgpack.Marshal(mailboxRequest{Labels: alice.mailboxIndex().labels()})
+	host.handleMailboxRequest(alice.network.Address(), aliceReq, false)
+	carolReq, _ := msgpack.Marshal(mailboxRequest{Labels: carol.mailboxIndex().labels()})
+	host.handleMailboxRequest(carol.network.Address(), carolReq, false)
+
+	aliceSaw := false
+	for _, ref := range host.hostOfferFor(alice.network.Address()).References {
+		if ref.FrameID == efGlobal.ID {
+			aliceSaw = true
+		}
+	}
+	assert.True(t, aliceSaw, "clearing Carol's DM must not remove Me's profile update from Group G's mailbox")
+	for _, ref := range host.hostOfferFor(carol.network.Address()).References {
+		assert.NotEqual(t, efGlobal.ID, ref.FrameID, "Carol's cleared DM mailbox must no longer offer the frame")
+	}
+}
+
+func TestASealedCopyAckOnlyCountsFromTheHostItWasSealedFor(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+	hostA := fakeEncryptedDeviceOf(t, alice.currentUserID()).Address()
+	hostB := fakeEncryptedDeviceOf(t, alice.currentUserID()).Address()
+
+	dm := signedDM(me, alice.currentUserID(), "bound to hostA")
+	ef := me.sealForHost(dm, hostA)
+	assert.True(t, ef != nil)
+
+	// hostB trying to ack hostA's copy ID must be ignored and must not consume hostA's record
+	badAck, _ := msgpack.Marshal(&ack{References: []frameReference{{FrameID: ef.ID, Type: typeEncryptedFrame}}})
+	me.handleAck(hostB, badAck, false)
+	assert.False(t, me.frameIsDeliveredTo(dm.ID, typeDirectMessage, hostB))
+
+	// hostA's real ack still succeeds
+	me.handleAck(hostA, badAck, false)
+	assert.True(t, me.frameIsDeliveredTo(dm.ID, typeDirectMessage, hostA))
+}

@@ -488,6 +488,11 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	if err != nil {
 		// We are getting an update that isn't a part of a valid consensus stack.  This is probably an invite for
 		// us to join a group that we aren't aware of it yet, but either way it's ok to save and move on here.
+		// If a known device invited us before we have the group creation, bootstrap our group keys from the invite
+		// so encrypted devices can immediately serve us the group creation and history.
+		if signerKnown && !b.haveGroupCreation(ug.Target) {
+			b.bootstrapGroupKeysFromInvite(ug)
+		}
 		return nil, false
 	}
 

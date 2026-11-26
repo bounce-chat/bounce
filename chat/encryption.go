@@ -153,6 +153,10 @@ func (b *Bounce) sealForHost(br broadcastable, addr string) *encryptedFrame {
 
 	var secrets [][]byte
 	if reKey {
+		owner := b.encryptedDeviceOwner(addr)
+		if owner != NilID && owner != b.currentUserID() {
+			return nil
+		}
 		secrets = b.reKeySecrets(br)
 		if len(secrets) == 0 {
 			// None of our other devices still needs it
@@ -179,7 +183,7 @@ func (b *Bounce) sealForHost(br broadcastable, addr string) *encryptedFrame {
 		}).Error("error sealing frame for encrypted device")
 		return nil
 	}
-	recordSealedCopy(ef.ID, br)
+	recordSealedCopy(ef.ID, addr, br)
 	return ef
 }
 

@@ -57,7 +57,7 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, 
 		// An encrypted device acks the copy we sealed for it by the random ID we gave that copy; map it back to the
 		// frame it was so delivery is tracked against the real frame
 		if fr.Type == typeEncryptedFrame && !b.encrypted {
-			if original, ok := sealedCopyReference(fr.FrameID); ok {
+			if original, ok := sealedCopyReference(fr.FrameID, peer); ok {
 				b.markFrameDelivered(original.FrameID, original.Type, peer)
 				b.handleAckSideEffects(original, peer)
 			}
