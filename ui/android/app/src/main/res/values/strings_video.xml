@@ -12,6 +12,8 @@
     <string name="video_pane_title">Video player, %1$s</string>
     <string name="video_save">Save video</string>
     <string name="video_close">Close video</string>
+    <!-- What a tap on the picture does, spoken by TalkBack after "double tap to". -->
+    <string name="video_toggle_controls">show or hide the playback controls</string>
 
     <!-- Stands in for the filename when an attachment arrived without one. -->
     <string name="video_untitled">Video</string>

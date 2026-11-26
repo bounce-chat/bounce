@@ -1,14 +1,21 @@
 package chat.bounce.ui.conversation
 
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
 import android.widget.MediaController
 import android.widget.VideoView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +38,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -98,9 +106,15 @@ fun VideoPlayerDialog(
     // the composition really is rebuilt from nothing.
     var resumePositionMs by rememberSaveable { mutableStateOf(0) }
     var failed by rememberSaveable { mutableStateOf(false) }
+    // Whether there is anything for the transport bar to control yet.
+    var prepared by remember { mutableStateOf(false) }
+
+    // The controller is built once and outlives any one composition, so it is
+    // handed whatever the caller's dismissal is now, not the first one it saw.
+    val dismiss by rememberUpdatedState(onDismiss)
 
     val player = remember(context) { VideoView(context) }
-    val controller = remember(context) { SteadyMediaController(context) }
+    val controller = remember(context) { SteadyMediaController(context) { dismiss() } }
 
     // VideoView shrinks its measured size to the video's aspect ratio even under
     // exact constraints, and a Compose-hosted view is placed at the host's top
@@ -123,8 +137,10 @@ fun VideoPlayerDialog(
 
     DisposableEffect(player, path) {
         failed = false
+        prepared = false
 
         player.setOnPreparedListener {
+            prepared = true
             // Anchoring here rather than at construction: VideoView re-anchors
             // the controller to the view's parent from inside openVideo(), which
             // it defers until the surface exists, so an anchor set any earlier is
@@ -146,6 +162,7 @@ fun VideoPlayerDialog(
 
         player.setOnErrorListener { _, _, _ ->
             failed = true
+            prepared = false
             player.keepScreenOn = false
             // Sniffing the container only proves what the file claims to be; a
             // device with no decoder for that profile fails right here. Returning
@@ -226,6 +243,29 @@ fun VideoPlayerDialog(
             // throws, and the surface behind the message is black in the error
             // state anyway.
             AndroidView(factory = { frame }, modifier = Modifier.fillMaxSize())
+
+            // Taps are taken here, over the player, which never sees a touch.
+            // VideoView brings the bar up or puts it away the moment a finger
+            // lands on it, and a back swipe begins with a finger landing: the
+            // system only takes the touch away once it has moved far enough to
+            // be a swipe. So a swipe across the picture showed the bar, its
+            // window took the focus, and the swipe was spent hiding it again,
+            // or hid a bar that was up and was then delivered to the window
+            // that had just gone. A tap is only a tap once the finger lifts
+            // where it landed, so a swipe passes through here doing nothing.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClickLabel = stringResource(R.string.video_toggle_controls),
+                    ) {
+                        if (prepared) {
+                            if (controller.isShowing) controller.hide() else controller.show()
+                        }
+                    },
+            )
 
             if (failed) {
                 Column(
@@ -326,14 +366,76 @@ private val HeaderScrim = Brush.verticalGradient(
  * asks for, and the bar is hidden by a timer of our own on a handler that can
  * always be cancelled. Every show goes through [show], the platform's own calls
  * included, so each one restarts the full wait.
+ *
+ * Back is replaced too. The bar is a window of its own and holds the focus
+ * while it is up, so back goes to it, and the platform spends that back on
+ * hiding the bar: leaving the player took two, and which window a swipe was
+ * sent to depended on how the bar happened to be changing as the swipe began.
+ * Here back on the bar is [onBack], the same as back anywhere else in the
+ * player, and a touch the system takes away from the bar leaves it up.
  */
-private class SteadyMediaController(context: Context) : MediaController(context) {
+private class SteadyMediaController(
+    context: Context,
+    private val onBack: () -> Unit,
+) : MediaController(context) {
     private val timer = Handler(Looper.getMainLooper())
     private val hideLater = Runnable { hide() }
     private val accessibility = context.getSystemService(AccessibilityManager::class.java)
 
+    // Back as the system delivers it from Android 13 on, to the window's
+    // dispatcher. Before that it only ever arrives as a key.
+    private val closeOnBack =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) OnBackInvokedCallback { onBack() } else null
+    private var backDispatcher: OnBackInvokedDispatcher? = null
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && closeOnBack != null) {
+            // Above the platform's own callback on this window, the one that
+            // only hides the bar. Kept so it can be taken off again: by the
+            // time the bar is detached it can no longer find its dispatcher.
+            backDispatcher = findOnBackInvokedDispatcher()
+            backDispatcher?.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, closeOnBack)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && closeOnBack != null) {
+            backDispatcher?.unregisterOnBackInvokedCallback(closeOnBack)
+            backDispatcher = null
+        }
+        super.onDetachedFromWindow()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            // Where the callback above is in use it has run before the key
+            // gets this far, and the release arrives cancelled. The press is
+            // swallowed either way: the platform hides the bar on it.
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) onBack()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        // A touch is cancelled when the system takes it over, which is what
+        // happens to a back swipe that begins on the bar. The platform hides
+        // the bar for that, and takes down the window the swipe is headed for.
+        if (event.action == MotionEvent.ACTION_CANCEL) {
+            show()
+            return true
+        }
+        return super.onTouchEvent(event)
+    }
+
     override fun show(timeout: Int) {
         super.show(0)
+        // A key goes to the view that holds the focus, and by now the bar
+        // does not: it took the focus when it was built, and gave it up when
+        // VideoView disabled it until the video was prepared. Without it a
+        // back key sent to the bar's window reaches nothing at all.
+        if (!hasFocus()) requestFocus()
         timer.removeCallbacks(hideLater)
         // The platform leaves the bar up under touch exploration, where a
         // control that vanishes while it is being found is worse than one that
