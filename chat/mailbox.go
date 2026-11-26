@@ -7,7 +7,6 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"sort"
 	"sync"
@@ -16,7 +15,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
-	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -26,14 +24,18 @@ import (
 // long term public key, so the host could see who talks to whom, who wrote what, which conversation a frame belongs
 // to, and when.  Now a frame on a host is addressed to mailboxes instead.  A mailbox label is a pseudorandom value
 // derived from a secret that only the participants of a conversation hold - a group's key chain, the ECDH agreement
-// between two users for their DM, a user's own key for their sync devices - together with an epoch, so labels rotate
-// every week.  The host indexes frames by label and serves a frame to any peer that asks for that label; presenting
-// an unguessable label is the proof of membership.  The host learns that some connection fetched some labels, and
-// how many frames each label holds, and nothing about who or what.
+// between two users for their DM, a user's own key for their sync devices.  The host indexes frames by label and
+// serves a frame to any peer that asks for that label; presenting an unguessable label is the proof of membership.
+// The host learns that some connection fetched some labels, and how many frames each label holds, and nothing about
+// who or what.
 //
-// Each stored frame carries, for every mailbox it is in, the data encryption key wrapped under a key derived from the
-// same secret and epoch.  A group of five hundred members costs one mailbox entry, because every member derives the
-// same group key, which is what removes the old cap on recipients.
+// Mailboxes are long lived so that an encrypted device can stay online indefinitely without its owner connecting and
+// still accept frames for the owner's conversations; undelivered copies and chunks expire on the host after
+// encryptedHostRetention (30 days) or on explicit history clears.
+//
+// Each stored frame carries, for every mailbox it is in, the data encryption key wrapped under a per-copy key derived
+// from the mailbox secret and the copy's random host ID.  A group of five hundred members costs one mailbox entry,
+// because every member derives the same group key, which is what removes the old cap on recipients.
 //
 // On the host, a frame's ID is a random value chosen by the sender for that copy, its type is hidden inside the
 // ciphertext, and there is no timestamp or conversation identifier: the host orders frames by when it received them.
@@ -41,11 +43,8 @@ import (
 // mailbox entry therefore carries a tag derived from the mailbox secret and the frame's real ID, which lets the
 // host recognise a copy of a frame it already holds without being able to tell which frame that is.
 
-const mailboxEpochSeconds = int64(7 * 24 * 60 * 60)
-
-// How many epochs back a device looks when asking a host for its mailboxes.  Frames older than this on a host are
-// out of reach of the devices, which makes it the host's effective retention.
-const mailboxLookbackEpochs = 13
+// How long a host keeps stored frames and chunk storage requests before expiring them.  A var so tests can shrink it.
+var encryptedHostRetention = 30 * 24 * time.Hour
 
 const mailboxLabelSize = 32
 const mailboxTagSize = 16
@@ -55,9 +54,9 @@ const mailboxTagSize = 16
 // above anything legitimate; it is here so that a single copy cannot carry an unbounded number of rows onto a host.
 const maximumMailboxesPerCopy = 4096
 
-// A peer may ask a host for this many mailboxes.  A device has a mailbox per conversation it can read for each epoch
-// it looks back over, so this is a few hundred conversations.  It is also what keeps a query over one peer's labels
-// within what the database will bind.
+// A peer may ask a host for this many mailboxes.  A device has one mailbox per conversation (plus historical group
+// keys and sibling device pairs), so this covers thousands of conversations while keeping queries within database
+// bind limits.
 const maximumMailboxLabelsPerPeer = 16384
 
 // How many labels go into one query when a peer names more than a handful
@@ -80,11 +79,10 @@ const (
 	mailboxKindDevice
 )
 
-// A mailbox the local device can read: the secret and epoch its label derives from
+// A mailbox the local device can read: the secret its label derives from
 type mailbox struct {
 	Label  []byte
 	Secret []byte
-	Epoch  int64
 	Kind   int
 	Thread ID // the counterparty user, the group, or nil
 }
@@ -107,25 +105,8 @@ func (mi *mailboxIndex) lookup(label []byte) (mailbox, bool) {
 	return mb, ok
 }
 
-func mailboxEpoch(timestamp int64) int64 {
-	return timestamp / mailboxEpochSeconds
-}
-
-// mailboxClock is what the current epoch is computed from; a var so tests can move time
-var mailboxClock = func() int64 { return time.Now().Unix() }
-
-func currentMailboxEpoch() int64 {
-	return mailboxEpoch(mailboxClock())
-}
-
-func epochBytes(epoch int64) []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(epoch))
-	return buf
-}
-
-func mailboxLabel(secret []byte, epoch int64) []byte {
-	label, err := hkdf.Key(sha256.New, secret, epochBytes(epoch), mailboxLabelInfo, mailboxLabelSize)
+func mailboxLabel(secret []byte) []byte {
+	label, err := hkdf.Key(sha256.New, secret, nil, mailboxLabelInfo, mailboxLabelSize)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -134,8 +115,10 @@ func mailboxLabel(secret []byte, epoch int64) []byte {
 	return label
 }
 
-func mailboxWrapKey(secret []byte, epoch int64) []byte {
-	key, err := hkdf.Key(sha256.New, secret, epochBytes(epoch), mailboxWrapInfo, 32)
+// mailboxWrapKey derives a unique per-copy key for wrapping a frame's DEK, salted with the copy's random host ID so
+// that every copy uses a distinct AES-GCM key and a wrapped DEK is bound to its copy ID as well as its label.
+func mailboxWrapKey(secret []byte, hostID ID) []byte {
+	key, err := hkdf.Key(sha256.New, secret, hostID[:], mailboxWrapInfo, 32)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -144,7 +127,7 @@ func mailboxWrapKey(secret []byte, epoch int64) []byte {
 	return key
 }
 
-// mailboxTag identifies one frame within one mailbox across epochs and copies, to anyone holding the secret
+// mailboxTag identifies one frame within one mailbox across copies, to anyone holding the secret
 func mailboxTag(secret []byte, frameID ID) []byte {
 	tag, err := hkdf.Key(sha256.New, secret, frameID[:], mailboxTagInfo, mailboxTagSize)
 	if err != nil {
@@ -431,12 +414,17 @@ func (b *Bounce) hostSecretsFor(br broadcastable, host string) ([][]byte, error)
 	return chosen, nil
 }
 
-// currentLabels derives the current epoch's mailbox labels for a set of secrets
-func currentLabels(secrets [][]byte) [][]byte {
-	epoch := currentMailboxEpoch()
+// mailboxLabels derives the mailbox labels for a set of conversation secrets
+func mailboxLabels(secrets [][]byte) [][]byte {
 	labels := make([][]byte, 0, len(secrets))
+	seen := map[string]bool{}
 	for _, secret := range secrets {
-		labels = append(labels, mailboxLabel(secret, epoch))
+		label := mailboxLabel(secret)
+		if seen[string(label)] {
+			continue
+		}
+		seen[string(label)] = true
+		labels = append(labels, label)
 	}
 	return labels
 }
@@ -482,10 +470,9 @@ func (b *Bounce) contactPublicECDHKeysByUser() map[ID][][]byte {
 	return byUser
 }
 
-// mailboxIndex builds every mailbox this device can read for the recent epochs: its own sync mailbox, a DM mailbox
-// per contact, a mailbox per key of every group it is in, and a device mailbox per sibling device, each for the
-// current epoch, the next one, and the lookback window.  This is what a device asks a host for, and what it uses
-// to open what comes back.
+// mailboxIndex builds every mailbox this device can read: its own sync mailbox, a DM mailbox per contact, a mailbox
+// per key of every group it is in, and a device mailbox per sibling device.  This is what a device asks a host for,
+// and what it uses to open what comes back.
 func (b *Bounce) mailboxIndex() *mailboxIndex {
 	index := &mailboxIndex{byLabel: map[string]mailbox{}}
 	me, ok := b.currentUser()
@@ -565,25 +552,22 @@ func (b *Bounce) mailboxIndex() *mailboxIndex {
 		}
 	}
 
-	current := currentMailboxEpoch()
 	for _, src := range sources {
-		for epoch := current + 1; epoch >= current-mailboxLookbackEpochs && epoch >= 0; epoch-- {
-			mb := mailbox{Label: mailboxLabel(src.secret, epoch), Secret: src.secret, Epoch: epoch, Kind: src.kind, Thread: src.thread}
-			if _, exists := index.byLabel[string(mb.Label)]; exists {
-				continue
-			}
-			index.byLabel[string(mb.Label)] = mb
-			index.all = append(index.all, mb)
+		mb := mailbox{Label: mailboxLabel(src.secret), Secret: src.secret, Kind: src.kind, Thread: src.thread}
+		if _, exists := index.byLabel[string(mb.Label)]; exists {
+			continue
 		}
+		index.byLabel[string(mb.Label)] = mb
+		index.all = append(index.all, mb)
 	}
 
 	return index
 }
 
-// clearLabelsForThread returns the labels of every completed epoch before a timestamp for a conversation, so that
-// clearing a thread's history can be expressed to a host as "delete these mailboxes" without naming the thread.
+// clearLabelsForThread returns the mailbox labels for a conversation, so that clearing a thread's history can be
+// expressed to a host as "delete entries in these mailboxes saved before this timestamp" without naming the thread.
 // The thread is a DM counterparty (the xor of the two user IDs) or a group.
-func (b *Bounce) clearLabelsForThread(thread ID, before int64) [][]byte {
+func (b *Bounce) clearLabelsForThread(thread ID) [][]byte {
 	me, ok := b.currentUser()
 	if !ok {
 		return nil
@@ -619,21 +603,7 @@ func (b *Bounce) clearLabelsForThread(thread ID, before int64) [][]byte {
 		}
 	}
 
-	// Only epochs that ended before the timestamp
-	lastComplete := mailboxEpoch(before) - 1
-	labels := [][]byte{}
-	seen := map[string]bool{}
-	for _, secret := range secrets {
-		for epoch := lastComplete; epoch >= lastComplete-mailboxLookbackEpochs && epoch >= 0; epoch-- {
-			label := mailboxLabel(secret, epoch)
-			if seen[string(label)] {
-				continue
-			}
-			seen[string(label)] = true
-			labels = append(labels, label)
-		}
-	}
-	return labels
+	return mailboxLabels(secrets)
 }
 
 // What is inside a sealed frame: everything a recipient needs to handle it, and nothing the host needs to see
@@ -705,7 +675,7 @@ func randomSlot() []byte {
 }
 
 // sealFrame produces the envelope a host stores for one copy of a frame: a fresh host ID, the frame sealed under a
-// fresh DEK, and that DEK wrapped once per mailbox for the current epoch
+// fresh DEK, and that DEK wrapped once per mailbox under a per-copy key salted with the host ID
 func sealFrame(br broadcastable, secrets [][]byte, settings copySettings) (*encryptedFrame, error) {
 	hostID := NewID()
 	plaintext, err := msgpack.Marshal(sealedFrame{Type: br.getType(), ID: br.getID(), Payload: br.getPayload()})
@@ -723,16 +693,15 @@ func sealFrame(br broadcastable, secrets [][]byte, settings copySettings) (*encr
 	}
 	ciphertext := dekGCM.Seal(nil, []byte{}, plaintext, sealedFrameAdditionalData(hostID))
 
-	epoch := currentMailboxEpoch()
 	entries := []mailboxEntry{}
 	seen := map[string]bool{}
 	for _, secret := range secrets {
-		label := mailboxLabel(secret, epoch)
+		label := mailboxLabel(secret)
 		if seen[string(label)] {
 			continue
 		}
 		seen[string(label)] = true
-		wrapGCM, err := newGCM(mailboxWrapKey(secret, epoch))
+		wrapGCM, err := newGCM(mailboxWrapKey(secret, hostID))
 		if err != nil {
 			return nil, err
 		}
@@ -767,7 +736,7 @@ func (mi *mailboxIndex) open(er encryptedReceive) (frame, error) {
 	if !ok {
 		return empty, errNoMailboxForLabel
 	}
-	wrapGCM, err := newGCM(mailboxWrapKey(mb.Secret, mb.Epoch))
+	wrapGCM, err := newGCM(mailboxWrapKey(mb.Secret, er.ID))
 	if err != nil {
 		return empty, err
 	}
@@ -870,7 +839,7 @@ var peerMailboxLabelsMutex sync.Mutex
 
 // A label the owner of this encrypted device can read.  Frames from peers that have not proven they are the owner
 // are only stored if they are addressed to one of these, so the host stays a store for its owner and not a dead
-// drop for anyone.  The owner registers them every time it connects, for the current and next epoch.
+// drop for anyone.  Labels are long lived so the host can stay online indefinitely without its owner connecting.
 type ownerMailbox struct {
 	ID      ID     `gorm:"primary_key;"`
 	Label   []byte `gorm:"uniqueIndex"`
@@ -908,8 +877,8 @@ func (b *Bounce) ownerCanReadAnyLabel(labels [][]byte) bool {
 }
 
 // A digest of the labels we last sent each encrypted device, so that the request is re-sent whenever the set of
-// mailboxes we can read changes: a new contact, a new group or group key, a sibling device, or a new epoch.  Keyed
-// by our own address as well as the peer, since tests run several engines in one process.
+// mailboxes we can read changes: a new contact, a new group or group key, or a sibling device.  Keyed by our own
+// address as well as the peer, since tests run several engines in one process.
 var mailboxRequestDigests = map[string][32]byte{}
 var mailboxRequestDigestsMutex sync.Mutex
 
@@ -938,9 +907,8 @@ func (b *Bounce) sendMailboxRequestFrom(peer string, index *mailboxIndex) {
 	mailboxRequestDigests[b.network.Address()+peer] = index.digest()
 	mailboxRequestDigestsMutex.Unlock()
 
-	// A host takes no more than this many, in the order given.  The index lists our mailboxes newest epoch first
-	// within each conversation, so what is cut off is the far end of the list, and it is said here rather than
-	// left to look like missing messages.
+	// A host takes no more than this many, in the order given, so log a warning if we ever exceed the cap rather
+	// than silently leaving conversations out.
 	labels := index.labels()
 	if len(labels) > maximumMailboxLabelsPerPeer {
 		log.WithFields(log.Fields{
@@ -1099,15 +1067,4 @@ func (b *Bounce) mailboxEntryFor(peer string, ef encryptedFrame) (mailboxEntry, 
 		}
 	}
 	return mailboxEntry{}, false
-}
-
-// pruneOwnerMailboxes forgets owner labels older than the lookback window
-func (b *Bounce) pruneOwnerMailboxes() {
-	cutoff := time.Now().Unix() - (mailboxLookbackEpochs+2)*mailboxEpochSeconds
-	err := b.database.Where("saved_at < ?", cutoff).Delete(&ownerMailbox{}).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error pruning owner mailboxes")
-	}
 }

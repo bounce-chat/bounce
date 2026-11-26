@@ -85,7 +85,7 @@ func TestAChallengeIsAnsweredUnderAKeyOfItsOwn(t *testing.T) {
 
 	assert.False(t, opens(agreement, response.Response, session), "the answer was sealed under the bare agreement between two user keys")
 	assert.False(t, opens(conversation, response.Response, session))
-	assert.False(t, opens(mailboxWrapKey(conversation, currentMailboxEpoch()), response.Response, session))
+	assert.False(t, opens(mailboxWrapKey(conversation, NewID()), response.Response, session))
 	assert.True(t, opens(referenceOfferChallengeKey(agreement), response.Response, session))
 
 	// A host, which holds the private half of the key it posed, derives the same key from its side
@@ -159,7 +159,7 @@ func TestDeletingStoredCopiesRemovesTheirMailboxEntriesAndDeliveryRecords(t *tes
 	assert.Equal(t, int64(1), rowsIn(t, ed, "delivery_records"))
 
 	// A cleared mailbox
-	clear := encryptedClearBefore{ID: NewID(), Labels: [][]byte{kept.Mailboxes[0].Label}}
+	clear := encryptedClearBefore{ID: NewID(), Timestamp: time.Now().Unix() + 10, Labels: [][]byte{kept.Mailboxes[0].Label}}
 	payload, _ := msgpack.Marshal(clear)
 	ed.handleEncryptedClearBefore(peer, payload, false)
 	assert.Equal(t, int64(0), rowsIn(t, ed, "encrypted_frames"))
@@ -367,7 +367,7 @@ func TestAHostBoundsWhatAPeerCanMakeItStoreOrLookUp(t *testing.T) {
 	payload, _ := msgpack.Marshal(good)
 	host.handleEncryptedFrame(bob.network.Address(), payload, false)
 	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", good.ID))
-	clear, _ := msgpack.Marshal(encryptedClearBefore{ID: NewID(), Labels: append(manyLabels(40000), good.Mailboxes[0].Label)})
+	clear, _ := msgpack.Marshal(encryptedClearBefore{ID: NewID(), Timestamp: time.Now().Unix() + 10, Labels: append(manyLabels(40000), good.Mailboxes[0].Label)})
 	host.handleEncryptedClearBefore(stranger, clear, false)
 	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", good.ID))
 
@@ -773,7 +773,7 @@ func TestHandlersDoNotWaitOnAPeerThatHasStoppedReading(t *testing.T) {
 	hostPeer := stoppedReading(host)
 	bobPeer := stoppedReading(bob)
 
-	clear, err := msgpack.Marshal(encryptedClearBefore{ID: NewID(), Labels: [][]byte{randomTestBytes(mailboxLabelSize)}})
+	clear, err := msgpack.Marshal(encryptedClearBefore{ID: NewID(), Timestamp: time.Now().Unix() + 10, Labels: [][]byte{randomTestBytes(mailboxLabelSize)}})
 	assert.NoError(t, err)
 	_, challengeKey := eroChallengeKey()
 	// In this order: the mailbox request is what gives the device something to answer the request after it with
@@ -929,9 +929,8 @@ func TestAnEncryptedReceiveRejectsNonSyncableControlFrames(t *testing.T) {
 	assert.NoError(t, err)
 	ciphertext := dekGCM.Seal(nil, []byte{}, sealedPayload, sealedFrameAdditionalData(hostID))
 
-	epoch := currentMailboxEpoch()
-	label := mailboxLabel(secret, epoch)
-	wrapGCM, err := newGCM(mailboxWrapKey(secret, epoch))
+	label := mailboxLabel(secret)
+	wrapGCM, err := newGCM(mailboxWrapKey(secret, hostID))
 	assert.NoError(t, err)
 	er := encryptedReceive{
 		ID:         hostID,
@@ -951,11 +950,13 @@ func TestAnEncryptedReceiveRejectsNonSyncableControlFrames(t *testing.T) {
 	sealedAck, err := msgpack.Marshal(sealedFrame{Type: typeAck, ID: NewID(), Payload: forgedAckPayload})
 	assert.NoError(t, err)
 	ackHostID := NewID()
+	ackWrapGCM, err := newGCM(mailboxWrapKey(secret, ackHostID))
+	assert.NoError(t, err)
 	erAck := encryptedReceive{
 		ID:         ackHostID,
 		Payload:    dekGCM.Seal(nil, []byte{}, sealedAck, sealedFrameAdditionalData(ackHostID)),
 		Label:      label,
-		WrappedDEK: er.WrappedDEK,
+		WrappedDEK: ackWrapGCM.Seal(nil, []byte{}, dek, mailboxEntryAdditionalData(label)),
 	}
 	bob.handleEncryptedReceive(host.network.Address(), erAck.getPayload(), false)
 	assert.False(t, bob.frameIsDeliveredTo(dm.ID, typeDirectMessage, host.network.Address()), "forged ack inside encryptedReceive must never be executed")
@@ -1089,7 +1090,7 @@ func TestAnOwnerCopyReplacesAnUntrustedCopyWithTheSameTagAndStrangersCannotProbe
 // last storage request for a hash removes the chunk's offer and its delivery records along with the blob.
 func TestAHostRequiresMailboxAccessForChunkOffersAndRemovesOffersWithTheLastRequest(t *testing.T) {
 	host, _ := newEncryptedDevice(t)
-	label := mailboxLabel([]byte("secret-for-chunk-auth"), currentMailboxEpoch())
+	label := mailboxLabel([]byte("secret-for-chunk-auth"))
 	hash := hashString(blake3.Sum256([]byte("chunk-auth-payload")))
 	assert.NoError(t, os.WriteFile(host.platform.ConfigDirectory+"/blobs/"+hash, []byte("chunk-auth-payload"), 0600))
 

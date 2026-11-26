@@ -154,20 +154,21 @@ func (b *Bounce) keepEncryptedDevicePruned() {
 }
 
 func (b *Bounce) pruneEncryptedDevice() {
-	err := deleteEach[encryptedFrame](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
+	now := time.Now().Unix()
+	cutoff := time.Now().Add(-encryptedHostRetention).Unix()
+	err := deleteEach[encryptedFrame](b.database, "(delete_at != 0 AND delete_at <= ?) OR saved_at < ?", now, cutoff)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error pruning encrypted frames")
 	}
-	err = deleteEach[encryptedChunkStorageRequest](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
+	err = deleteEach[encryptedChunkStorageRequest](b.database, "(delete_at != 0 AND delete_at <= ?) OR timestamp < ?", now, cutoff)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error pruning encrypted chunk storage requests")
 	}
 
-	b.pruneOwnerMailboxes()
 	b.forgetDepartedPeers()
 
 	// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
@@ -817,12 +818,12 @@ func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
 }
 
 // A clear of a conversation's history on encrypted devices.  Locally it records which thread was cleared and up to
-// when; on the wire it carries only the mailbox labels of the completed epochs before that time, so the host deletes
-// mailboxes it cannot interpret rather than frames of a conversation it can name.
+// when; on the wire it carries the conversation's mailbox labels and the clear timestamp, so the host deletes only
+// entries saved at or before that time without knowing which conversation the labels name.
 type encryptedClearBefore struct {
-	ID        ID       `gorm:"primary_key;"`
-	BatchKey  ID       `msgpack:"-"`
-	Timestamp int64    `msgpack:"-"`
+	ID        ID `gorm:"primary_key;"`
+	BatchKey  ID `msgpack:"-"`
+	Timestamp int64
 	Labels    [][]byte `gorm:"-"`
 }
 
@@ -856,52 +857,58 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 			labels = append(labels, label)
 		}
 	}
-	if len(labels) == 0 {
+	if len(labels) == 0 || ecb.Timestamp <= 0 {
 		go b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
 		return nil, false
 	}
 
 	// Presenting a label is the proof of being able to read that mailbox, which is the same standing as being
-	// allowed to clear it.  Only the cleared mailbox entries are removed; a copy is deleted once none of its
-	// mailboxes remain, so clearing one conversation does not wipe a multi-mailbox copy (such as a profile update on
-	// the author's own host) from every other conversation it belongs to.  The labels are taken a batch at a time, so
-	// that however many a peer sends, no one query binds more than the database allows.
+	// allowed to clear it.  Only mailbox entries for copies saved at or before ecb.Timestamp are removed; a copy is
+	// deleted once none of its mailboxes remain, so newer copies in the same mailbox survive and clearing one
+	// conversation does not wipe a multi-mailbox copy (such as a profile update on the author's own host) from every
+	// other conversation it belongs to.  Labels and frame IDs are taken a batch at a time, so that however many a peer
+	// sends, no one query binds more than the database allows.
 	for start := 0; start < len(labels); start += mailboxLabelQueryBatch {
 		batch := labels[start:min(start+mailboxLabelQueryBatch, len(labels))]
 
 		var affectedFrameIDs []ID
-		err = b.database.Model(&mailboxEntry{}).Distinct("encrypted_frame_id").Where("label IN ?", batch).Pluck("encrypted_frame_id", &affectedFrameIDs).Error
+		err = b.database.Model(&mailboxEntry{}).
+			Distinct("mailbox_entries.encrypted_frame_id").
+			Joins("JOIN encrypted_frames ON encrypted_frames.id = mailbox_entries.encrypted_frame_id").
+			Where("mailbox_entries.label IN ? AND encrypted_frames.saved_at <= ?", batch, ecb.Timestamp).
+			Pluck("mailbox_entries.encrypted_frame_id", &affectedFrameIDs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error finding encrypted frames for clear before")
 		} else if len(affectedFrameIDs) > 0 {
-			err = b.database.Where("label IN ?", batch).Delete(&mailboxEntry{}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error deleting mailbox entries for clear before")
-			} else {
-				for fStart := 0; fStart < len(affectedFrameIDs); fStart += mailboxLabelQueryBatch {
-					frameBatch := affectedFrameIDs[fStart:min(fStart+mailboxLabelQueryBatch, len(affectedFrameIDs))]
-					stillHasEntries := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("encrypted_frame_id IN ?", frameBatch)
-					err = deleteEach[encryptedFrame](b.database, "id IN ? AND id NOT IN (?)", frameBatch, stillHasEntries)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Error("error deleting encrypted frames for clear before")
-					}
+			for fStart := 0; fStart < len(affectedFrameIDs); fStart += mailboxLabelQueryBatch {
+				frameBatch := affectedFrameIDs[fStart:min(fStart+mailboxLabelQueryBatch, len(affectedFrameIDs))]
+				err = b.database.Where("label IN ? AND encrypted_frame_id IN ?", batch, frameBatch).Delete(&mailboxEntry{}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error deleting mailbox entries for clear before")
+					continue
+				}
+				stillHasEntries := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("encrypted_frame_id IN ?", frameBatch)
+				err = deleteEach[encryptedFrame](b.database, "id IN ? AND id NOT IN (?)", frameBatch, stillHasEntries)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error deleting encrypted frames for clear before")
 				}
 			}
 		}
 
-		// Likewise for batch-deletable stored chunks, whose files go once their last storage request is gone
-		batchDeletableRequests := b.database.Model(&encryptedChunkStorageRequest{}).Select("id").Where("can_batch_delete = ?", true)
+		// Likewise for batch-deletable stored chunks saved at or before ecb.Timestamp, whose files go once their last
+		// storage request is gone
 		var affectedRequestIDs []ID
 		err = b.database.Model(&encryptedChunkRecipient{}).
-			Distinct("encrypted_chunk_storage_request_id").
-			Where("label IN ? AND encrypted_chunk_storage_request_id IN (?)", batch, batchDeletableRequests).
-			Pluck("encrypted_chunk_storage_request_id", &affectedRequestIDs).Error
+			Distinct("encrypted_chunk_recipients.encrypted_chunk_storage_request_id").
+			Joins("JOIN encrypted_chunk_storage_requests ON encrypted_chunk_storage_requests.id = encrypted_chunk_recipients.encrypted_chunk_storage_request_id").
+			Where("encrypted_chunk_recipients.label IN ? AND encrypted_chunk_storage_requests.can_batch_delete = ? AND encrypted_chunk_storage_requests.timestamp <= ?", batch, true, ecb.Timestamp).
+			Pluck("encrypted_chunk_recipients.encrypted_chunk_storage_request_id", &affectedRequestIDs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1020,7 +1027,7 @@ func (b *Bounce) sendEncryptedClearBefores(address string) {
 	}
 
 	for _, ecb := range clears {
-		ecb.Labels = b.clearLabelsForThread(ecb.BatchKey, ecb.Timestamp)
+		ecb.Labels = b.clearLabelsForThread(ecb.BatchKey)
 		if len(ecb.Labels) == 0 {
 			continue
 		}

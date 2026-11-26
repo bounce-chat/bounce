@@ -5,6 +5,7 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
+	"github.com/zeebo/blake3"
 )
 
 // These tests describe how frames are stored on encrypted devices (mailbox.go): addressed to mailboxes derived
@@ -193,23 +195,113 @@ func TestFramesSealedUnderAConcurrentRotationStillOpen(t *testing.T) {
 	assert.True(t, ok)
 }
 
-func TestMailboxLabelsRotateWithTheEpochAndOldOnesStayReadable(t *testing.T) {
+func TestMailboxWrapKeyIsUniquePerCopyAndBoundToCopyID(t *testing.T) {
 	me, alice, _, _ := createUsersAndGroups(t)
-	start := time.Now().Unix()
-	mailboxClock = func() int64 { return start }
-	t.Cleanup(func() { mailboxClock = func() int64 { return time.Now().Unix() } })
 
-	thisWeek := sealFor(t, me, signedDM(me, alice.currentUserID(), "this week"))
+	first := sealFor(t, me, signedDM(me, alice.currentUserID(), "first"))
+	second := sealFor(t, me, signedDM(me, alice.currentUserID(), "second"))
 
-	mailboxClock = func() int64 { return start + mailboxEpochSeconds }
-	nextWeek := sealFor(t, me, signedDM(me, alice.currentUserID(), "next week"))
+	assert.Equal(t, first.Mailboxes[0].Label, second.Mailboxes[0].Label, "long-lived mailbox labels stay stable across messages")
+	assert.NotEqual(t, first.ID, second.ID)
 
-	assert.False(t, bytes.Equal(thisWeek.Mailboxes[0].Label, nextWeek.Mailboxes[0].Label), "labels change every epoch")
+	// Two copies of the same conversation use distinct wrap keys derived from the copy ID
+	secret, err := me.dmThreadSecret(mustCurrentUser(me).PrivateECDHKey, mustCurrentUser(alice).PublicECDHKey)
+	assert.NoError(t, err)
+	assert.False(t, bytes.Equal(mailboxWrapKey(secret, first.ID), mailboxWrapKey(secret, second.ID)))
 
-	_, ok := openWith(alice, thisWeek)
-	assert.True(t, ok, "last week's mailbox is still within the lookback window")
-	_, ok = openWith(alice, nextWeek)
+	// Both open normally, but transplanting WrappedDEK onto a different copy ID fails to unwrap
+	_, ok := openWith(alice, first)
 	assert.True(t, ok)
+	_, ok = openWith(alice, second)
+	assert.True(t, ok)
+
+	transplanted := receivesOf(first)[0]
+	transplanted.ID = second.ID
+	_, err = alice.mailboxIndex().open(transplanted)
+	assert.Error(t, err)
+}
+
+func TestHostRetentionExpiresOldCopiesAndChunkRequests(t *testing.T) {
+	_, alice, bob, _ := createUsersAndGroups(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+	disconnectFrom(t, bob, host)
+
+	oldCopy := sealForHost(t, alice, signedDM(alice, bob.currentUserID(), "expired"), host)
+	freshCopy := sealForHost(t, alice, signedDM(alice, bob.currentUserID(), "fresh"), host)
+	for _, ef := range []*encryptedFrame{oldCopy, freshCopy} {
+		payload, _ := msgpack.Marshal(ef)
+		host.handleEncryptedFrame(alice.network.Address(), payload, false)
+	}
+
+	expiredAt := time.Now().Add(-encryptedHostRetention - time.Hour).Unix()
+	assert.NoError(t, host.database.Model(&encryptedFrame{}).Where("id = ?", oldCopy.ID).Update("saved_at", expiredAt).Error)
+
+	// Store an expired chunk request and a fresh chunk request with blobs and offers
+	dmLabel := oldCopy.Mailboxes[0].Label
+	oldHash := hashString(blake3.Sum256([]byte("expired-chunk")))
+	freshHash := hashString(blake3.Sum256([]byte("fresh-chunk")))
+	oldPath := host.platform.ConfigDirectory + "/blobs/" + oldHash
+	freshPath := host.platform.ConfigDirectory + "/blobs/" + freshHash
+	assert.NoError(t, os.WriteFile(oldPath, []byte("expired-chunk"), 0600))
+	assert.NoError(t, os.WriteFile(freshPath, []byte("fresh-chunk"), 0600))
+
+	oldSR := encryptedChunkStorageRequest{
+		ID:             NewID(),
+		Hash:           oldHash,
+		Source:         bob.network.Address(),
+		Downloaded:     true,
+		FullPath:       oldPath,
+		OwnerRequested: true,
+		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: oldHash, Label: dmLabel}},
+	}
+	freshSR := encryptedChunkStorageRequest{
+		ID:             NewID(),
+		Hash:           freshHash,
+		Source:         bob.network.Address(),
+		Downloaded:     true,
+		FullPath:       freshPath,
+		OwnerRequested: true,
+		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: freshHash, Label: dmLabel}},
+	}
+	assert.NoError(t, host.database.Create(&oldSR).Error)
+	assert.NoError(t, host.database.Create(&freshSR).Error)
+	assert.NoError(t, host.database.Model(&encryptedChunkStorageRequest{}).Where("id = ?", oldSR.ID).Update("timestamp", expiredAt).Error)
+	assert.NoError(t, host.database.Create(&encryptedChunkOffer{
+		SignedFrame: SignedFrame{OriginalPayload: []byte("old"), Signature: []byte("sig"), Signer: "signer"},
+		ID:          NewID(),
+		Hash:        oldHash,
+		Location:    host.network.Address(),
+	}).Error)
+	assert.NoError(t, host.database.Create(&encryptedChunkOffer{
+		SignedFrame: SignedFrame{OriginalPayload: []byte("fresh"), Signature: []byte("sig"), Signer: "signer"},
+		ID:          NewID(),
+		Hash:        freshHash,
+		Location:    host.network.Address(),
+	}).Error)
+
+	ownerMailboxCountBefore := countWhere(t, host, &ownerMailbox{}, "1 = 1")
+	assert.True(t, ownerMailboxCountBefore > 0)
+
+	host.pruneEncryptedDevice()
+
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", oldCopy.ID))
+	assert.Equal(t, int64(0), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", oldCopy.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", freshCopy.ID))
+
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", oldSR.ID))
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", oldHash))
+	_, err := os.Stat(oldPath)
+	assert.True(t, os.IsNotExist(err))
+
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkStorageRequest{}, "id = ?", freshSR.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkOffer{}, "hash = ?", freshHash))
+	_, err = os.Stat(freshPath)
+	assert.NoError(t, err)
+
+	// Long-lived owner mailboxes are not pruned when copies expire
+	assert.Equal(t, ownerMailboxCountBefore, countWhere(t, host, &ownerMailbox{}, "1 = 1"))
 }
 
 func TestAHostLearnsAboutNewConversationsWithoutReconnecting(t *testing.T) {
@@ -236,7 +328,7 @@ func TestAHostLearnsAboutNewConversationsWithoutReconnecting(t *testing.T) {
 	assert.True(t, len(after) > before)
 	secret, err := bob.dmThreadSecret(mustCurrentUser(bob).PrivateECDHKey, mustCurrentUser(alice).PublicECDHKey)
 	assert.NoError(t, err)
-	assert.True(t, after[string(mailboxLabel(secret, currentMailboxEpoch()))])
+	assert.True(t, after[string(mailboxLabel(secret))])
 
 	// Nothing changed since, so another audit sends nothing
 	bob.refreshMailboxRequests()
@@ -368,18 +460,14 @@ func TestAFrameRelayedByTwoDevicesIsStoredOnce(t *testing.T) {
 	assert.NoError(t, host.database.Where("destination = ? AND frame_id = ?", bob.network.Address(), fromAlice.ID).First(&dr).Error)
 }
 
-func TestClearingHistoryDeletesCompletedEpochsOnTheHost(t *testing.T) {
+func TestClearingHistoryDeletesCopiesSavedBeforeTimestampOnTheHost(t *testing.T) {
 	_, alice, bob, groupID := createUsersAndGroups(t)
 	waitForGroupKeys(t, alice, groupID, 1)
 	host, key := newEncryptedDevice(t)
 	claimEncryptedDevice(t, bob, host, key)
 	waitForOwnerMailboxes(t, host)
 
-	start := time.Now().Unix()
-	mailboxClock = func() int64 { return start }
-	t.Cleanup(func() { mailboxClock = func() int64 { return time.Now().Unix() } })
-
-	// Alice and Bob exchange messages this week, stored on Bob's host, alongside a group message of Alice's
+	// Alice and Bob exchange messages stored on Bob's host, alongside a group message of Alice's
 	store := func(sender *Bounce, br broadcastable) ID {
 		ef := sealForHost(t, sender, br, host)
 		payload, _ := msgpack.Marshal(ef)
@@ -393,38 +481,43 @@ func TestClearingHistoryDeletesCompletedEpochsOnTheHost(t *testing.T) {
 	}
 	one := signedDM(alice, bob.currentUserID(), "one")
 	two := signedDM(bob, alice.currentUserID(), "two")
+	afterClear := signedDM(alice, bob.currentUserID(), "after clear")
 	chatter := signedGroupMessage(alice, groupID, "group chatter")
 	oneCopy := store(alice, one)
 	twoCopy := store(bob, two)
+	afterClearCopy := store(alice, afterClear)
 	chatterCopy := store(alice, chatter)
-	assert.True(t, held(oneCopy) && held(twoCopy) && held(chatterCopy))
-	// Alice can open all three (the host also holds Bob's own history, some of it shared with her)
+	assert.True(t, held(oneCopy) && held(twoCopy) && held(afterClearCopy) && held(chatterCopy))
+
+	// Place the first two DM copies before the clear timestamp and the third after it, all in the same mailbox
+	clearAt := time.Now().Unix()
+	assert.NoError(t, host.database.Model(&encryptedFrame{}).Where("id IN ?", []ID{oneCopy, twoCopy, chatterCopy}).Update("saved_at", clearAt-10).Error)
+	assert.NoError(t, host.database.Model(&encryptedFrame{}).Where("id = ?", afterClearCopy).Update("saved_at", clearAt+10).Error)
+
+	// Alice can open all four (the host also holds Bob's own history, some of it shared with her)
 	openable := idsOf(framesOpenableBy(t, host, alice))
-	for _, id := range []ID{one.ID, two.ID, chatter.ID} {
+	for _, id := range []ID{one.ID, two.ID, afterClear.ID, chatter.ID} {
 		assert.True(t, openable[id])
 	}
 
-	// A week later Bob clears the DM conversation: the host is told which mailboxes to drop, not which conversation
-	mailboxClock = func() int64 { return start + mailboxEpochSeconds }
-	clear := encryptedClearBefore{ID: NewID(), Labels: bob.clearLabelsForThread(xor(bob.currentUserID(), alice.currentUserID()), mailboxClock())}
+	// Bob clears the DM conversation up to clearAt: the host is told which mailboxes to drop up to that timestamp,
+	// not which conversation
+	clear := encryptedClearBefore{
+		ID:        NewID(),
+		Timestamp: clearAt,
+		Labels:    bob.clearLabelsForThread(xor(bob.currentUserID(), alice.currentUserID())),
+	}
 	assert.True(t, len(clear.Labels) > 0)
-
-	// The engines here are live.  Bob's device is still handing the host its own history, and the host has pushed
-	// these messages to him, so copies sealed after this point can land on the host while the test looks at it.  The
-	// clear is therefore held to what it was given: the copies and mailbox entries that were there when it was made.
-	var inCleared []ID
-	assert.NoError(t, host.database.Model(&mailboxEntry{}).Where("label IN ?", clear.Labels).Pluck("id", &inCleared).Error)
-	assert.True(t, len(inCleared) >= 2)
 
 	payload, _ := msgpack.Marshal(clear)
 	host.handleEncryptedClearBefore(bob.network.Address(), payload, false)
 
 	assert.False(t, held(oneCopy))
 	assert.False(t, held(twoCopy))
+	assert.True(t, held(afterClearCopy), "a newer copy in the same mailbox survives")
 	assert.True(t, held(chatterCopy), "the group conversation was not cleared")
-	var left int64
-	assert.NoError(t, host.database.Model(&mailboxEntry{}).Where("id IN ?", inCleared).Count(&left).Error)
-	assert.Equal(t, int64(0), left, "nothing that was in the cleared mailboxes is left")
+	assert.Equal(t, int64(0), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id IN ?", []ID{oneCopy, twoCopy}))
+	assert.Equal(t, int64(1), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", afterClearCopy))
 }
 
 func idsOf(frames []frame) map[ID]bool {
@@ -649,12 +742,12 @@ func TestAReKeyFrameIsSealedToDeviceMailboxesHoweverItReachesAHost(t *testing.T)
 		ef := me.sealForHost(frame, newTestnet().Address())
 		assert.True(t, ef != nil)
 		assert.Equal(t, 1, len(ef.Mailboxes))
-		assert.Equal(t, mailboxLabel(shared, currentMailboxEpoch()), ef.Mailboxes[0].Label)
+		assert.Equal(t, mailboxLabel(shared), ef.Mailboxes[0].Label)
 
 		// The sibling opens it with the secret it derives from its own device key
 		theirs, err := me.deviceThreadSecret(siblingKey.Bytes(), myDevice.ECDHPublicKey)
 		assert.NoError(t, err)
-		mb := mailbox{Label: mailboxLabel(theirs, currentMailboxEpoch()), Secret: theirs, Epoch: currentMailboxEpoch()}
+		mb := mailbox{Label: mailboxLabel(theirs), Secret: theirs}
 		index := &mailboxIndex{byLabel: map[string]mailbox{string(mb.Label): mb}}
 		opened, err := index.open(receivesOf(ef)[0])
 		assert.NoError(t, err)
@@ -663,7 +756,7 @@ func TestAReKeyFrameIsSealedToDeviceMailboxesHoweverItReachesAHost(t *testing.T)
 
 		// Neither the old user key nor the new one names a mailbox it is in
 		for _, userKey := range [][]byte{before.PrivateECDHKey, after.PrivateECDHKey} {
-			assert.NotEqual(t, mailboxLabel(syncThreadSecret(userKey), currentMailboxEpoch()), ef.Mailboxes[0].Label)
+			assert.NotEqual(t, mailboxLabel(syncThreadSecret(userKey)), ef.Mailboxes[0].Label)
 		}
 	}
 
@@ -757,7 +850,7 @@ func TestAFrameForEveryoneWeKnowIsSealedToOurGroupsAndToTheUsersOutsideThem(t *t
 	}
 	group, ok := me.currentGroupKey(groupID)
 	assert.True(t, ok)
-	groupLabel := string(mailboxLabel(group.Key, currentMailboxEpoch()))
+	groupLabel := string(mailboxLabel(group.Key))
 
 	// On an encrypted device of my own it is in the group's mailbox and in one for each user outside the group,
 	// and every one of them can open it
@@ -1030,9 +1123,6 @@ func TestClearingOneConversationLeavesMultiMailboxGlobalFramesForOtherConversati
 
 	// Disconnect Me so UpdateProfileName does not live-broadcast under a different copy ID before we store efGlobal
 	disconnectFrom(t, me, host)
-	epochStart := int64(200) * mailboxEpochSeconds
-	mailboxClock = func() int64 { return epochStart + 100 }
-	t.Cleanup(func() { mailboxClock = func() int64 { return time.Now().Unix() } })
 
 	// Seal a profile update (global frame: in Group G AND in DM(me, carol)) and a DM with Carol onto Me's host
 	assert.NoError(t, me.UpdateProfileName("New Name"))
@@ -1048,11 +1138,9 @@ func TestClearingOneConversationLeavesMultiMailboxGlobalFramesForOtherConversati
 	efDMPayload, _ := msgpack.Marshal(efDM)
 	host.handleEncryptedFrame(me.network.Address(), efDMPayload, false)
 
-	// Move to the next epoch and clear ONLY the DM with Carol
-	clearAt := epochStart + mailboxEpochSeconds + 100
-	mailboxClock = func() int64 { return clearAt }
-	clearLabels := me.clearLabelsForThread(xor(me.currentUserID(), carol.currentUserID()), clearAt)
-	clearFrame := encryptedClearBefore{ID: NewID(), Labels: clearLabels}
+	// Clear ONLY the DM with Carol up to after both copies were stored
+	clearLabels := me.clearLabelsForThread(xor(me.currentUserID(), carol.currentUserID()))
+	clearFrame := encryptedClearBefore{ID: NewID(), Timestamp: time.Now().Unix() + 10, Labels: clearLabels}
 	host.handleEncryptedClearBefore(carol.network.Address(), clearFrame.getPayload(), false)
 
 	// The DM copy is completely gone, while the profile update copy survives in Group G's mailbox only
@@ -1060,20 +1148,20 @@ func TestClearingOneConversationLeavesMultiMailboxGlobalFramesForOtherConversati
 	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", efGlobal.ID))
 	assert.Equal(t, int64(1), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", efGlobal.ID))
 
-	// Alice (in Group G) is still offered the profile update; Carol (cleared DM) is not
+	// An offline device of Alice (in Group G) catching up is still offered the profile update; Carol (cleared DM) is not
 	aliceReq, _ := msgpack.Marshal(mailboxRequest{Labels: alice.mailboxIndex().labels()})
-	host.handleMailboxRequest(alice.network.Address(), aliceReq, false)
+	host.handleMailboxRequest("alice-catching-up", aliceReq, false)
 	carolReq, _ := msgpack.Marshal(mailboxRequest{Labels: carol.mailboxIndex().labels()})
-	host.handleMailboxRequest(carol.network.Address(), carolReq, false)
+	host.handleMailboxRequest("carol-catching-up", carolReq, false)
 
 	aliceSaw := false
-	for _, ref := range host.hostOfferFor(alice.network.Address()).References {
+	for _, ref := range host.hostOfferFor("alice-catching-up").References {
 		if ref.FrameID == efGlobal.ID {
 			aliceSaw = true
 		}
 	}
 	assert.True(t, aliceSaw, "clearing Carol's DM must not remove Me's profile update from Group G's mailbox")
-	for _, ref := range host.hostOfferFor(carol.network.Address()).References {
+	for _, ref := range host.hostOfferFor("carol-catching-up").References {
 		assert.NotEqual(t, efGlobal.ID, ref.FrameID, "Carol's cleared DM mailbox must no longer offer the frame")
 	}
 }

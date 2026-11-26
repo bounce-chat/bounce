@@ -380,7 +380,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 				}).Warn("cannot derive mailboxes for file, not requesting encrypted storage")
 				continue
 			}
-			labels := currentLabels(b.secretsForOwner(secrets, ownerUser.ID))
+			labels := mailboxLabels(b.secretsForOwner(secrets, ownerUser.ID))
 			if len(labels) == 0 {
 				continue
 			}

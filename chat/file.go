@@ -2376,7 +2376,7 @@ func (b *Bounce) offerChunk(c chunk) {
 		b.sendDirect(addr, encryptedChunkStorageRequest{
 			ID:             NewID(),
 			Hash:           c.EncryptedHash,
-			Labels:         currentLabels(secrets),
+			Labels:         mailboxLabels(secrets),
 			DeleteAt:       deleteAt,
 			CanBatchDelete: canBatchDelete,
 		})
