@@ -1,11 +1,13 @@
 package chat
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
+	"io"
 	"net"
 	"os"
 	"slices"
@@ -836,4 +838,60 @@ func TestAnEncryptedDeviceIsGivenANameWithAColonInIt(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	assert.Equal(t, "attic: the old laptop", esd.Name)
+}
+
+// A file sent to someone who is offline reaches them through their encrypted device.  The device fetches the file's
+// chunks from the sender while the sender is there, and hands them on when the recipient returns, by which time the
+// sender may be gone.
+func TestAFileReachesAnOfflineUserThroughTheirEncryptedDevice(t *testing.T) {
+	quickReferenceRetries(t)
+	alice, bob := connectUsers(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+	waitForUserToKnowEncryptedDevice(t, alice, bob.currentUserID(), host.network.Address())
+	connectTo(t, alice, host.network.Address())
+
+	// Bob goes offline, and Alice sends him a file
+	disconnectFrom(t, bob, alice)
+	disconnectFrom(t, bob, host)
+	data := []byte("what the attachment holds " + NewID().String())
+	assert.NoError(t, alice.SendDirectMessage(bob.currentUserID(), "with a file", []OutgoingAttachment{{
+		Name:   "notes.txt",
+		Size:   int64(len(data)),
+		Reader: io.NopCloser(bytes.NewReader(data)),
+	}}, NilID))
+	var dm directMessage
+	assert.NoError(t, alice.database.Preload("FileAttachments").First(&dm, "text = ?", "with a file").Error)
+	assert.Equal(t, 1, len(dm.FileAttachments))
+	fileID := dm.FileAttachments[0].FileID
+
+	// Bob's encrypted device fetches the file's one chunk from Alice
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && countWhere(t, host, &encryptedChunkStorageRequest{}, "downloaded = ?", true) < 1 {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedChunkStorageRequest{}, "downloaded = ?", true))
+
+	// Alice goes, and Bob comes back to his encrypted device alone
+	disconnectFrom(t, alice, host)
+	connectTo(t, bob, host.network.Address())
+
+	// The device tells Bob which chunks it holds as soon as he connects, before the catch up that brings him the
+	// file they belong to, and tells him again after it.  Chunks are asked for on a ticker, which this does not
+	// wait for.
+	var f file
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if bob.database.First(&f, "id = ?", fileID).Error == nil && f.Downloaded {
+			break
+		}
+		bob.makeAnyChunkRequests()
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.True(t, f.Downloaded, "the file never arrived from the encrypted device")
+	received, err := bob.GetFileData(fileID)
+	assert.NoError(t, err)
+	assert.Equal(t, data, received)
+	assert.Equal(t, 0, bob.getRemoteDevice(alice.network.Address()).connectedSockets(), "the file has to have come from the encrypted device")
 }

@@ -131,11 +131,14 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	err = b.database.Take(&c, "encrypted_hash = ?", eco.Hash).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// An encrypted device offers its chunks as soon as we connect, ahead of the catch up that brings the
+			// file they belong to, so this is the usual order and not a fault.  The offer names no file, so there
+			// is nothing to keep it under yet.  It is not acked either: an ack is what stops it being offered, and
+			// it has to be offered again once the file is here.
 			log.WithFields(log.Fields{
 				"hash": eco.Hash,
 				"peer": peer,
-			}).Error("received encrypted chunk offer for unknown chunk")
-			go b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
+			}).Debug("received encrypted chunk offer before the file its chunk belongs to")
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
