@@ -1,6 +1,61 @@
 package chat
 
-import log "github.com/sirupsen/logrus"
+import (
+	"encoding/binary"
+	"sync"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zeebo/blake3"
+)
+
+const maxVerifiedDeviceSignatureCacheEntries = 65536
+
+var verifiedDeviceSignaturesMutex sync.RWMutex
+var verifiedDeviceSignatures = map[[32]byte]struct{}{}
+
+// verifyDeviceSignature verifies a device signature and memoizes valid results.  Cryptographic signature
+// validity is immutable, so caching valid (network, signer, message, signature) tuples eliminates repeated
+// ed25519 verifications during consensus reloads while keeping revocation, ownership, and graph checks dynamic.
+func (b *Bounce) verifyDeviceSignature(signer string, message, signature []byte) bool {
+	if signer == "" || len(signature) == 0 {
+		return false
+	}
+
+	hasher := blake3.New()
+	netName := b.network.Name()
+	receiver := b.network.Address()
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(netName))))
+	hasher.Write([]byte(netName))
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(receiver))))
+	hasher.Write([]byte(receiver))
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(signer))))
+	hasher.Write([]byte(signer))
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(message))))
+	hasher.Write(message)
+	hasher.Write(binary.BigEndian.AppendUint32(nil, uint32(len(signature))))
+	hasher.Write(signature)
+	var key [32]byte
+	hasher.Sum(key[:0])
+
+	verifiedDeviceSignaturesMutex.RLock()
+	_, cached := verifiedDeviceSignatures[key]
+	verifiedDeviceSignaturesMutex.RUnlock()
+	if cached {
+		return true
+	}
+
+	if !b.network.VerifySignature(signer, message, signature) {
+		return false
+	}
+
+	verifiedDeviceSignaturesMutex.Lock()
+	if len(verifiedDeviceSignatures) >= maxVerifiedDeviceSignatureCacheEntries {
+		verifiedDeviceSignatures = make(map[[32]byte]struct{}, maxVerifiedDeviceSignatureCacheEntries/2)
+	}
+	verifiedDeviceSignatures[key] = struct{}{}
+	verifiedDeviceSignaturesMutex.Unlock()
+	return true
+}
 
 type mutualDeviceSignature struct {
 	DeviceOne   string
@@ -144,8 +199,8 @@ func (b *Bounce) isValidAddition(u user, dev device) bool {
 	}
 
 	// Verify the mutual signature
-	introducerSignsNew := b.network.VerifySignature(introducer.Address, []byte(dev.Address), dev.Signature.SignatureOfNewDevice)
-	newSignsIntroducer := b.network.VerifySignature(dev.Address, []byte(introducer.Address), dev.Signature.SignatureOfPreexistingDevice)
+	introducerSignsNew := b.verifyDeviceSignature(introducer.Address, []byte(dev.Address), dev.Signature.SignatureOfNewDevice)
+	newSignsIntroducer := b.verifyDeviceSignature(dev.Address, []byte(introducer.Address), dev.Signature.SignatureOfPreexistingDevice)
 	if !introducerSignsNew || !newSignsIntroducer {
 		log.WithFields(log.Fields{
 			"user":       u.ID,
@@ -289,7 +344,7 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 	nodes := map[string]*node{}
 	for _, pair := range dg.signatures {
 		// Verify that the signatures are valid
-		validSignature := b.network.VerifySignature(pair.DeviceOne, []byte(pair.DeviceTwo), pair.OneSignsTwo)
+		validSignature := b.verifyDeviceSignature(pair.DeviceOne, []byte(pair.DeviceTwo), pair.OneSignsTwo)
 		if !validSignature {
 			log.WithFields(log.Fields{
 				"user":           u.ID,
@@ -298,7 +353,7 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 			}).Warn("a device group is invalid because of an invalid signature")
 			return false
 		}
-		validSignature = b.network.VerifySignature(pair.DeviceTwo, []byte(pair.DeviceOne), pair.TwoSignsOne)
+		validSignature = b.verifyDeviceSignature(pair.DeviceTwo, []byte(pair.DeviceOne), pair.TwoSignsOne)
 		if !validSignature {
 			log.WithFields(log.Fields{
 				"user":           u.ID,

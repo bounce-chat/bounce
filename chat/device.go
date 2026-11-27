@@ -74,7 +74,7 @@ func (b *Bounce) signDevice(d *device) {
 }
 
 func (b *Bounce) hasValidSelfSignature(d device) bool {
-	return b.network.VerifySignature(d.Address, deviceSelfSignatureHash(d.ID), d.SelfSignature)
+	return b.verifyDeviceSignature(d.Address, deviceSelfSignatureHash(d.ID), d.SelfSignature)
 }
 
 func (d *device) BeforeCreate(tx *gorm.DB) error {

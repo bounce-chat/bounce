@@ -10,22 +10,34 @@ import (
 var errStackEmpty = errors.New("stack is empty")
 var errInvalidDeviceGroup = errors.New("invalid device group")
 
+type cachedInviteDevice struct {
+	address   string
+	revokedAt int64
+}
+
+type cachedInvite struct {
+	userID         ID
+	payloadDevices []cachedInviteDevice
+}
+
 type canonicalStack struct {
 	groupID      ID
 	myID         ID
 	addressMap   map[string]ID
 	revokedMap   map[string]int64
+	inviteCache  map[ID]cachedInvite
 	history      []groupState
 	historyStash []groupState
 }
 
 func newCanonicalStack(initialState groupState, addressMap map[string]ID, revokedMap map[string]int64, groupID, myID ID) *canonicalStack {
 	return &canonicalStack{
-		groupID:    groupID,
-		myID:       myID,
-		addressMap: addressMap,
-		revokedMap: revokedMap,
-		history:    []groupState{initialState},
+		groupID:     groupID,
+		myID:        myID,
+		addressMap:  addressMap,
+		revokedMap:  revokedMap,
+		inviteCache: map[ID]cachedInvite{},
+		history:     []groupState{initialState},
 	}
 }
 
@@ -105,7 +117,7 @@ func (b *Bounce) recomputeDeviceMaps(cs *canonicalStack) {
 	}
 	for _, canonical := range cs.history {
 		if canonical.ug.Type == updateGroupTypeInviteUser {
-			addressMapAdditions, revokedMapAdditions, err := b.inviteAddressMaps(canonical.ug)
+			addressMapAdditions, revokedMapAdditions, err := b.inviteAddressMaps(cs, canonical.ug)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -124,7 +136,61 @@ func (b *Bounce) recomputeDeviceMaps(cs *canonicalStack) {
 	cs.revokedMap = revokedMap
 }
 
-func (b *Bounce) inviteAddressMaps(ug updateGroup) (map[string]ID, map[string]int64, error) {
+func (b *Bounce) inviteAddressMaps(cs *canonicalStack, ug updateGroup) (map[string]ID, map[string]int64, error) {
+	if cs != nil && cs.inviteCache != nil {
+		if cached, ok := cs.inviteCache[ug.ID]; ok {
+			var devs []device
+			err := b.database.Select("address", "revoked_at").Where("user_id = ?", cached.userID).Find(&devs).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error finding devices")
+			}
+
+			// If any device for this user is revoked, or the merged device count could exceed the cap,
+			// fall back to full validation so dynamic revocation and size checks still run.
+			hasRevoked := false
+			mergedAddrs := make(map[string]struct{}, len(cached.payloadDevices)+len(devs))
+			for _, dev := range cached.payloadDevices {
+				mergedAddrs[dev.address] = struct{}{}
+			}
+			for _, dev := range devs {
+				mergedAddrs[dev.Address] = struct{}{}
+				if dev.RevokedAt != 0 {
+					hasRevoked = true
+					break
+				}
+			}
+
+			if !hasRevoked && len(mergedAddrs) <= maximumDevicesPerUser {
+				addressMap := make(map[string]ID, len(mergedAddrs))
+				revokedMap := make(map[string]int64, len(mergedAddrs))
+				if len(devs) > 0 {
+					for _, dev := range devs {
+						if _, set := addressMap[dev.Address]; !set {
+							addressMap[dev.Address] = cached.userID
+						}
+						ts, set := revokedMap[dev.Address]
+						if !set || ts > dev.RevokedAt {
+							revokedMap[dev.Address] = dev.RevokedAt
+						}
+					}
+				} else {
+					for _, dev := range cached.payloadDevices {
+						if _, set := addressMap[dev.address]; !set {
+							addressMap[dev.address] = cached.userID
+						}
+						ts, set := revokedMap[dev.address]
+						if !set || ts > dev.revokedAt {
+							revokedMap[dev.address] = dev.revokedAt
+						}
+					}
+				}
+				return addressMap, revokedMap, nil
+			}
+		}
+	}
+
 	addressMap := map[string]ID{}
 	revokedMap := map[string]int64{}
 
@@ -151,8 +217,25 @@ func (b *Bounce) inviteAddressMaps(ug updateGroup) (map[string]ID, map[string]in
 		return addressMap, revokedMap, errInvalidDeviceGroup
 	}
 
+	if cs != nil {
+		summary := cachedInvite{
+			userID:         u.ID,
+			payloadDevices: make([]cachedInviteDevice, len(u.Devices)),
+		}
+		for i, dev := range u.Devices {
+			summary.payloadDevices[i] = cachedInviteDevice{
+				address:   dev.Address,
+				revokedAt: dev.RevokedAt,
+			}
+		}
+		if cs.inviteCache == nil {
+			cs.inviteCache = map[ID]cachedInvite{}
+		}
+		cs.inviteCache[ug.ID] = summary
+	}
+
 	var devs []device
-	err = b.database.Where("user_id = ?", u.ID).Find(&devs).Error
+	err = b.database.Select("address", "revoked_at").Where("user_id = ?", u.ID).Find(&devs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -188,24 +271,18 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 		return
 	}
 
-	// Recompute the device maps before and after evaluating changes, in order to rollback
-	// any rejected changes or changes that became non-canonical
-	defer b.recomputeDeviceMaps(cs)
-
-	// Update the map from address to user for this group if needed
+	// Validate an invite's device group before applying, but wait to merge its address maps until the
+	// invite is actually pushed onto canonical history so rejected inserts never require a full recompute.
+	var addressMapAdditions map[string]ID
+	var revokedMapAdditions map[string]int64
 	if ug.Type == updateGroupTypeInviteUser {
-		addressMapAdditions, revokedMapAdditions, err := b.inviteAddressMaps(ug)
+		var err error
+		addressMapAdditions, revokedMapAdditions, err = b.inviteAddressMaps(cs, ug)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error parsing update group invite user")
 			return
-		}
-		for addr, id := range addressMapAdditions {
-			cs.addressMap[addr] = id
-		}
-		for addr, ts := range revokedMapAdditions {
-			cs.revokedMap[addr] = ts
 		}
 	}
 
@@ -282,7 +359,14 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 	// Check if this user has permission to perform this change
 	if err = stateChangeAllowed(lastState, ug, cs.myID); err == nil {
 		// If it is allowed, apply it
-		cs.push(ug)
+		if pushErr := cs.push(ug); pushErr == nil && ug.Type == updateGroupTypeInviteUser {
+			for addr, id := range addressMapAdditions {
+				cs.addressMap[addr] = id
+			}
+			for addr, ts := range revokedMapAdditions {
+				cs.revokedMap[addr] = ts
+			}
+		}
 	} else {
 		// If this change is not allowed, check if it is confirmed
 		confirmed := (float64(ug.confirmingUsers(lastState.users)) / float64(len(lastState.users))) > 0.5
@@ -327,6 +411,17 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 						cs.restore()
 						return
 					} else {
+						// Only rebuild device maps if any popped entry was an InviteUser.
+						poppedInvite := false
+						for _, rc := range recheck {
+							if rc.Type == updateGroupTypeInviteUser {
+								poppedInvite = true
+								break
+							}
+						}
+						if poppedInvite {
+							b.recomputeDeviceMaps(cs)
+						}
 						// If the conflict is not confirmed then we exclude it, and attempt to re-add everything that happened since the conflict was removed
 						for _, rc := range recheck[1:] {
 							b.insertUpdateGroupIntoStack(cs, rc)

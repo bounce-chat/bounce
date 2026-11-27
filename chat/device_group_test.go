@@ -104,10 +104,15 @@ func TestLearningADeviceCostsTheSameHoweverManyTheUserHas(t *testing.T) {
 	assert.True(t, validator.isValidAddition(aliceRecord, newest))
 	assert.Equal(t, int64(3), counting.verifications.Load())
 
-	// Whereas taking the whole record at face value means checking every device and introduction in it
+	// Whereas taking the whole record at face value checks every uncached device and introduction in it
+	// (Alice's original device was already verified during setup and memoized; the 200 new ones are checked now),
+	// and a subsequent check reuses the memoized signature results.
 	counting.verifications.Store(0)
 	assert.True(t, validator.hasValidDeviceGroup(aliceRecord))
-	assert.Equal(t, int64(1+3*200), counting.verifications.Load())
+	assert.Equal(t, int64(3*200), counting.verifications.Load())
+	counting.verifications.Store(0)
+	assert.True(t, validator.hasValidDeviceGroup(aliceRecord))
+	assert.Equal(t, int64(0), counting.verifications.Load())
 
 	// And the device handler accepts it the same way
 	_, accepted := me.handleDevice(alice.network.Address(), newest.getPayload(), false)

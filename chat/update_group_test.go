@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -336,4 +337,106 @@ func TestStrangerCanDeliverCatchUpForContactsInvite(t *testing.T) {
 	var carolRow user
 	assert.NoError(t, me.database.First(&g, "id = ?", gc.ID).Error, "stranger-delivered catch-up carrying a contact's invite must join the group")
 	assert.NoError(t, me.database.First(&carolRow, "id = ?", carol.currentUserID()).Error, "group creator should be learned from the valid invite chain")
+}
+
+type countingVerifyNetwork struct {
+	*testnet
+	verifyCalls atomic.Int64
+}
+
+func (c *countingVerifyNetwork) VerifySignature(address string, message []byte, signature []byte) bool {
+	c.verifyCalls.Add(1)
+	return c.testnet.VerifySignature(address, message, signature)
+}
+
+func TestConsensusReplayDoesNotReVerifyCanonicalInviteDeviceGroups(t *testing.T) {
+	net := &countingVerifyNetwork{testnet: newTestnet()}
+	me := newBounceOnNetwork(newTestUI(), net)
+	me.SetProfile("Me", []byte{}, "test")
+
+	_, alice, _, groupID := createUsersAndGroupsFor(t, me)
+	now := time.Now().Unix()
+
+	// Build a large valid 150-device sockpuppet user record (1 original + 149 introduced = 448 ed25519 signatures).
+	rootKey := bnc01NewOnion()
+	sock := bnc01SyntheticUser("Sock", rootKey, now-1000)
+	for i := 0; i < 149; i++ {
+		childKey := bnc01NewOnion()
+		child := introducedBy(sock.ID, rootKey.addr(), rootKey, childKey, now-900+int64(i))
+		sock.Devices = append(sock.Devices, child)
+	}
+	sockBytes, err := msgpack.Marshal(sock)
+	assert.NoError(t, err)
+
+	// Alice invites the 150-device sockpuppet into the group so it sits on canonical history.
+	inviteSock := &updateGroup{
+		Nonce:     newNonce(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: now + 10,
+		Type:      updateGroupTypeInviteUser,
+		Data:      sockBytes,
+	}
+	inviteSock.ID = inviteSock.generateID()
+	_, accepted := me.handleUpdateGroup(alice.network.Address(), bnc01BounceFrame(alice, inviteSock), false)
+	assert.True(t, accepted)
+
+	// Reset signature verification counter and send 20 tiny group renames from Alice.
+	// Without caching/avoiding redundant recomputeDeviceMaps, each rename re-verifies all 448 signatures twice (>17,000 calls).
+	net.verifyCalls.Store(0)
+	for i := 0; i < 20; i++ {
+		rename := &updateGroup{
+			Nonce:     newNonce(),
+			Actor:     alice.currentUserID(),
+			Target:    groupID,
+			Timestamp: now + int64(20+i),
+			Type:      updateGroupTypeChangeName,
+			Data:      []byte(fmt.Sprintf("Renamed-%d", i)),
+		}
+		rename.ID = rename.generateID()
+		_, accepted = me.handleUpdateGroup(alice.network.Address(), bnc01BounceFrame(alice, rename), false)
+		assert.True(t, accepted)
+	}
+	liveCalls := net.verifyCalls.Load()
+	assert.True(t, liveCalls <= 40, "expected <= 40 VerifySignature calls across 20 renames, got %d", liveCalls)
+
+	// A full cold reload (dropping the in-memory stack and inviteCache) must also avoid re-running ed25519
+	// on already-verified device signatures.
+	net.verifyCalls.Store(0)
+	assert.NoError(t, me.reloadGroupConsensus(groupID))
+	coldReloadCalls := net.verifyCalls.Load()
+	assert.Equal(t, int64(0), coldReloadCalls, "cold reload should hit the verified device signature cache")
+
+	// Dynamic checks still apply: adding a new device for Sock in DB is picked up on reload, and revoking a
+	// device of Sock still causes updates signed after revocation to be rejected.
+	newSockKey := bnc01NewOnion()
+	newSockDev := introducedBy(sock.ID, rootKey.addr(), rootKey, newSockKey, now+50)
+	_, accepted = me.handleDevice(alice.network.Address(), newSockDev.getPayload(), false)
+	assert.True(t, accepted)
+
+	sockAccept := &updateGroup{
+		Nonce:     newNonce(),
+		Actor:     sock.ID,
+		Target:    groupID,
+		Timestamp: now + 60,
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{acceptInvite},
+	}
+	sockAccept.ID = sockAccept.generateID()
+	_, accepted = me.handleUpdateGroup(newSockKey.addr(), bnc01OnionFrame(newSockKey, sockAccept), false)
+	assert.True(t, accepted, "a newly added device for an invited user must still be recognized via live DB refresh")
+
+	// Revoke newSockDev and ensure a post-revocation rename by it is rejected by consensus.
+	assert.NoError(t, me.database.Model(&device{}).Where("id = ?", newSockDev.ID).Update("revoked_at", now+65).Error)
+	postRevokeRename := &updateGroup{
+		Nonce:     newNonce(),
+		Actor:     sock.ID,
+		Target:    groupID,
+		Timestamp: now + 70,
+		Type:      updateGroupTypeChangeName,
+		Data:      []byte("AfterRevoke"),
+	}
+	postRevokeRename.ID = postRevokeRename.generateID()
+	_, accepted = me.handleUpdateGroup(newSockKey.addr(), bnc01OnionFrame(newSockKey, postRevokeRename), false)
+	assert.False(t, accepted, "revoking a device must still reject post-revocation updates")
 }
