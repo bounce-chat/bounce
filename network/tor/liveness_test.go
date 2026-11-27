@@ -17,7 +17,7 @@ import (
 // shortLiveness shrinks every liveness duration so a test runs in well under a second
 func shortLiveness(t *testing.T) {
 	t.Helper()
-	saved := []*time.Duration{&canaryDelay, &canaryKeepAliveInterval, &canaryReadWindow, &canaryRedialWindow, &canaryRedialPause, &canaryDialTimeout, &restartInterval, &restartBackoffLimit, &handshakeTimeout}
+	saved := []*time.Duration{&canaryDelay, &canaryKeepAliveInterval, &canaryReadWindow, &canaryRedialWindow, &canaryRedialPause, &canaryDialTimeout, &restartInterval, &restartBackoffLimit, &handshakeTimeout, &handshakeFirstFlightTimeout}
 	previous := make([]time.Duration, len(saved))
 	for i, d := range saved {
 		previous[i] = *d
@@ -36,6 +36,7 @@ func shortLiveness(t *testing.T) {
 	restartInterval = 10 * time.Millisecond
 	restartBackoffLimit = 30 * time.Millisecond
 	handshakeTimeout = 100 * time.Millisecond
+	handshakeFirstFlightTimeout = 50 * time.Millisecond
 }
 
 // fakeSelf stands in for Tor carrying a connection from ourselves back to ourselves.  Each dial hands the canary the
@@ -531,5 +532,115 @@ func TestVerdictsThatAreNotNewsStartNoRecovery(t *testing.T) {
 	n.networkDead(current, true)
 	if n.recovering.Load() {
 		t.Fatal("a verdict during shutdown started a recovery")
+	}
+}
+
+// An inbound flood arriving on our hidden service proves the service is reachable over Tor,
+// so even when no peer has spoken and the canary fails to connect, the network is not declared dead
+// until the inbound connections stop too.
+func TestInboundFloodVetoesFalseDeadVerdict(t *testing.T) {
+	shortLiveness(t)
+	n, addr := newTestIdentity(t)
+	n.callbacks = chat.NetworkCallbacks{NetworkOnline: func() {}, NetworkOffline: func() {}}
+
+	fake := newFakeListener()
+	accepted, _, pumpDone := startPump(t, n, addr, fake)
+	t.Cleanup(func() {
+		fake.stop()
+		pumpDone.Wait()
+		for len(accepted) > 0 {
+			(<-accepted).Close()
+		}
+	})
+
+	self := newFakeSelf()
+	self.fail.Store(true)
+	var v verdict
+	startCanary(t, n, self, &v)
+
+	stopFlood := make(chan struct{})
+	floodDone := make(chan struct{})
+	pace := canaryReadWindow / 4
+	go func() {
+		defer close(floodDone)
+		for {
+			select {
+			case <-stopFlood:
+				return
+			default:
+				lSide, dSide := net.Pipe()
+				select {
+				case fake.conns <- lSide:
+					go func(c net.Conn) {
+						time.Sleep(pace)
+						c.Close()
+					}(dSide)
+				case <-stopFlood:
+					lSide.Close()
+					dSide.Close()
+					return
+				}
+				time.Sleep(pace)
+			}
+		}
+	}()
+	t.Cleanup(func() { <-floodDone })
+
+	time.Sleep(canaryDelay + 3*canaryRedialWindow)
+	if called, _ := v.get(); called {
+		t.Fatal("the network was declared dead while inbound connections were arriving on the listener")
+	}
+
+	close(stopFlood)
+	if !waitFor(t, 2*canaryRedialWindow+canaryReadWindow+time.Second, func() bool { called, _ := v.get(); return called }) {
+		t.Fatal("the network was never declared dead after inbound connections stopped")
+	}
+}
+
+// Unconfirmed recovery keeps the existing session online during the backoff sleep so outbound dials
+// keep working, and only reports offline when it is actually about to restart Tor.
+func TestUnconfirmedRecoveryStaysOnlineDuringBackoffSleep(t *testing.T) {
+	shortLiveness(t)
+	n := newLivenessNetwork(t)
+	var offline atomic.Int32
+	n.callbacks = chat.NetworkCallbacks{
+		NetworkOnline:  func() {},
+		NetworkOffline: func() { offline.Add(1) },
+	}
+	n.online = true
+	n.recovering.Store(true)
+
+	sleptWhileOnline := false
+	offlineAtRestart := false
+	n.recoverNetwork(false,
+		func() error {
+			offlineAtRestart = offline.Load() == 1
+			return nil
+		},
+		func(time.Duration) bool {
+			sleptWhileOnline = offline.Load() == 0
+			return true
+		},
+	)
+	if !sleptWhileOnline {
+		t.Error("network was taken offline before the unconfirmed backoff sleep")
+	}
+	if !offlineAtRestart {
+		t.Error("network was not taken offline before restarting Tor")
+	}
+
+	// If shutdown interrupts the backoff sleep, offline is never reported by recovery.
+	n.online = true
+	offline.Store(0)
+	n.recovering.Store(true)
+	n.recoverNetwork(false,
+		func() error {
+			t.Error("restart should not run when sleep was cancelled")
+			return nil
+		},
+		func(time.Duration) bool { return false },
+	)
+	if offline.Load() != 0 {
+		t.Errorf("offline reported %d times on cancelled backoff sleep, want 0", offline.Load())
 	}
 }

@@ -2,6 +2,7 @@ package tor
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -68,6 +69,13 @@ var errListenerClosed = errors.New("listener closed")
 // the connection for a multiple of it, which is the same wedge in slow motion.
 // A var rather than a const so tests can shorten it; nothing else reassigns it.
 var handshakeTimeout = 30 * time.Second
+
+// handshakeFirstFlightTimeout bounds how long an inbound peer may stay silent
+// before sending its opening address and nonce.  An honest dialer writes both
+// immediately once connected; keeping this short inside handshakeTimeout stops
+// silent connections from holding handshake slots for the whole budget.
+// A var rather than a const so tests can shorten it; nothing else reassigns it.
+var handshakeFirstFlightTimeout = 5 * time.Second
 
 // How long a dial may take before it is abandoned.  A rendezvous that has not completed in this time is not going to,
 // and without a bound every dial goroutine lives as long as Arti takes to give up on its own.
@@ -144,11 +152,16 @@ type Network struct {
 	stoppedOnce sync.Once
 
 	// lastPeerRead is when a peer connection last read a byte, as UnixNano; the
-	// canary's own traffic is excluded. recovering serialises recoveries and
-	// restartBackoff is the pause before the next restart of a session whose
-	// canary never connected. See liveness.go.
-	lastPeerRead atomic.Int64
-	recovering   atomic.Bool
+	// canary's own traffic is excluded.  lastInboundAccept is when our listener
+	// last accepted a raw connection and activeHandshakes tracks how many
+	// inbound handshakes are currently in flight; either proves the hidden
+	// service is reachable and busy rather than dead.  recovering serialises
+	// recoveries and restartBackoff is the pause before the next restart of a
+	// session whose canary never connected. See liveness.go.
+	lastPeerRead      atomic.Int64
+	lastInboundAccept atomic.Int64
+	activeHandshakes  atomic.Int64
+	recovering        atomic.Bool
 	// descriptorPublished records that the current session's descriptor has been seen going up, so that the first
 	// publication of each session is reported once and the next session's is reported again
 	descriptorPublished atomic.Bool
@@ -611,6 +624,7 @@ func (bounceTor *Network) publishSession(s *session) bool {
 	}
 	bounceTor.session = s
 	bounceTor.descriptorPublished.Store(false)
+	bounceTor.lastInboundAccept.Store(0)
 	gate := bounceTor.ready
 	if gate == nil {
 		gate = make(chan struct{})
@@ -1027,6 +1041,63 @@ type acceptor interface {
 	Accept() (net.Conn, error)
 }
 
+// firstFlightQueue tracks inbound connections that have not yet sent their
+// opening address and nonce, in arrival order, so a full handshake pool can
+// evict the oldest silent connection instead of stalling Accept.
+type firstFlightQueue struct {
+	mu   sync.Mutex
+	list list.List
+}
+
+func (q *firstFlightQueue) add(conn net.Conn) *list.Element {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.list.PushBack(conn)
+}
+
+func (q *firstFlightQueue) remove(elem *list.Element) {
+	if elem == nil {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if elem.Value == nil {
+		return
+	}
+	elem.Value = nil
+	q.list.Remove(elem)
+}
+
+func (q *firstFlightQueue) evictOldest() net.Conn {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	front := q.list.Front()
+	if front == nil {
+		return nil
+	}
+	conn, _ := front.Value.(net.Conn)
+	front.Value = nil
+	q.list.Remove(front)
+	return conn
+}
+
+func (q *firstFlightQueue) closeAll() {
+	q.mu.Lock()
+	var conns []net.Conn
+	for front := q.list.Front(); front != nil; front = q.list.Front() {
+		if conn, ok := front.Value.(net.Conn); ok && conn != nil {
+			conns = append(conns, conn)
+		}
+		front.Value = nil
+		q.list.Remove(front)
+	}
+	q.mu.Unlock()
+
+	for _, conn := range conns {
+		conn.Close()
+	}
+}
+
 // runAcceptPump is acceptPump with its dependencies passed in. A connection
 // from our own address is the canary dialling in and goes to canary, never to
 // accepted; with no canary channel it is closed.
@@ -1038,6 +1109,7 @@ func (bounceTor *Network) runAcceptPump(
 	stopping chan struct{},
 ) {
 	slots := make(chan struct{}, maxConcurrentHandshakes)
+	var awaitingFirstFlight firstFlightQueue
 	var workers sync.WaitGroup
 
 	// Accept errors other than the listener being closed are transient - the
@@ -1045,6 +1117,7 @@ func (bounceTor *Network) runAcceptPump(
 	// accepted - and a healthy listener keeps working afterwards, so they are
 	// retried after a pause rather than ending the pump, which the engine
 	// would treat as fatal.
+acceptLoop:
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -1067,15 +1140,40 @@ func (bounceTor *Network) runAcceptPump(
 			break
 		}
 
-		// Blocks once maxConcurrentHandshakes are in flight, which stops an
-		// inbound flood from creating unbounded goroutines.
-		slots <- struct{}{}
-		workers.Add(1)
-		go func(raw net.Conn) {
-			defer workers.Done()
-			defer func() { <-slots }()
+		// Reaching Accept proves our hidden service is receiving connections over Tor.
+		bounceTor.lastInboundAccept.Store(time.Now().UnixNano())
 
-			torConn, err := bounceTor.handshakeListener(listenerAddress, raw)
+		// Bound concurrent handshakes.  When all slots are full, evict the oldest
+		// connection still waiting for its first flight so silent peers cannot
+		// starve honest dialers or the liveness canary.
+		select {
+		case slots <- struct{}{}:
+		default:
+			if evicted := awaitingFirstFlight.evictOldest(); evicted != nil {
+				evicted.Close()
+			}
+			select {
+			case slots <- struct{}{}:
+			case <-bounceTor.stopChannel():
+				connection.Close()
+				break acceptLoop
+			}
+		}
+
+		bounceTor.activeHandshakes.Add(1)
+		waitElem := awaitingFirstFlight.add(connection)
+		workers.Add(1)
+		go func(raw net.Conn, elem *list.Element) {
+			defer workers.Done()
+			defer func() {
+				awaitingFirstFlight.remove(elem)
+				bounceTor.activeHandshakes.Add(-1)
+				<-slots
+			}()
+
+			torConn, err := bounceTor.handshakeListenerWith(listenerAddress, raw, func() {
+				awaitingFirstFlight.remove(elem)
+			})
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -1104,12 +1202,14 @@ func (bounceTor *Network) runAcceptPump(
 				// Nobody will collect this one.
 				torConn.Close()
 			}
-		}(connection)
+		}(connection, waitElem)
 	}
 
-	// Release any worker still trying to hand over a connection, wait for them
-	// all to finish, then close the queue so a parked Accept wakes up.
+	// Release any worker still trying to hand over a connection, drop any silent
+	// peers still waiting for their first flight, wait for all workers to finish,
+	// then close the queue so a parked Accept wakes up.
 	close(stopping)
+	awaitingFirstFlight.closeAll()
 	workers.Wait()
 	close(accepted)
 }
@@ -1118,8 +1218,16 @@ func (bounceTor *Network) runAcceptPump(
 // and returns the authenticated wrapper. Every failure path closes the socket:
 // a rejected peer must not leak a descriptor.
 func (bounceTor *Network) handshakeListener(listenerAddress string, connection net.Conn) (*torNetworkConnection, error) {
-	// One absolute budget for the whole exchange.
-	if err := connection.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+	return bounceTor.handshakeListenerWith(listenerAddress, connection, nil)
+}
+
+func (bounceTor *Network) handshakeListenerWith(listenerAddress string, connection net.Conn, onFirstFlight func()) (*torNetworkConnection, error) {
+	// One absolute budget for the whole exchange, with a tighter initial budget
+	// for the opening address and nonce that an honest dialer writes at once.
+	now := time.Now()
+	overallDeadline := now.Add(handshakeTimeout)
+	firstFlightDeadline := now.Add(min(handshakeFirstFlightTimeout, handshakeTimeout))
+	if err := connection.SetDeadline(firstFlightDeadline); err != nil {
 		connection.Close()
 		return nil, err
 	}
@@ -1138,9 +1246,24 @@ func (bounceTor *Network) handshakeListener(listenerAddress string, connection n
 		connection.Close()
 		return nil, errors.New("received non-canonical dialer address")
 	}
+	dialerPublicKey, err := arti.PublicKeyFromOnionID(string(dialerAddress))
+	if err != nil || isLowOrderKey(dialerPublicKey) {
+		connection.Close()
+		return nil, errors.New("received invalid dialer address")
+	}
 
 	dialerNonce, err := read(connection, handshakeNonceSize)
 	if err != nil {
+		connection.Close()
+		return nil, err
+	}
+
+	// First flight received: remove from silent-peer eviction and restore the
+	// remainder of the absolute handshake budget for steps two and three.
+	if onFirstFlight != nil {
+		onFirstFlight()
+	}
+	if err := connection.SetDeadline(overallDeadline); err != nil {
 		connection.Close()
 		return nil, err
 	}

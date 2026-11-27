@@ -128,6 +128,13 @@ func (bounceTor *Network) runCanaryWith(
 				}
 				continue
 			}
+			if bounceTor.inboundRecentlyAccepted() || bounceTor.handshakeSlotsFull() {
+				log.Warn("cannot connect to our own hidden service, but our listener is busy with inbound connections; not restarting")
+				if !bounceTor.sleepUnless(canaryRedialPause, stopping) {
+					return
+				}
+				continue
+			}
 			log.Warn("cannot connect to our own hidden service and no peer has spoken recently, the network appears to be down")
 			dead(confirmed)
 			return
@@ -249,6 +256,19 @@ func (bounceTor *Network) peersRecentlyRead() bool {
 	return last != 0 && time.Since(time.Unix(0, last)) < canaryReadWindow
 }
 
+// inboundRecentlyAccepted reports whether our hidden service listener accepted a raw connection within
+// the last canaryReadWindow, which proves the hidden service is reachable over Tor even if a flood is
+// preventing handshakes from completing.
+func (bounceTor *Network) inboundRecentlyAccepted() bool {
+	last := bounceTor.lastInboundAccept.Load()
+	return last != 0 && time.Since(time.Unix(0, last)) < canaryReadWindow
+}
+
+// handshakeSlotsFull reports whether every concurrent inbound handshake slot is currently occupied.
+func (bounceTor *Network) handshakeSlotsFull() bool {
+	return bounceTor.activeHandshakes.Load() >= int64(maxConcurrentHandshakes)
+}
+
 // networkDead is the canary's verdict on its session.  One recovery runs at a time, and a session that has already
 // been replaced needs none.
 func (bounceTor *Network) networkDead(s *session, confirmed bool) {
@@ -273,7 +293,6 @@ func (bounceTor *Network) networkDead(s *session, confirmed bool) {
 // retried every restartInterval with no backoff and the backoff is reset, as it is when a canary connects.
 func (bounceTor *Network) recoverNetwork(confirmed bool, restart func() error, sleep func(time.Duration) bool) {
 	defer bounceTor.recovering.Store(false)
-	bounceTor.setOnline(false)
 
 	if !confirmed {
 		backoff := time.Duration(bounceTor.restartBackoff.Load())
@@ -293,6 +312,8 @@ func (bounceTor *Network) recoverNetwork(confirmed bool, restart func() error, s
 			return
 		}
 	}
+
+	bounceTor.setOnline(false)
 
 	for {
 		err := restart()

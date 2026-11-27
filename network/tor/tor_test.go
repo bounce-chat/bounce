@@ -643,3 +643,152 @@ func TestASessionOpenedAfterShutdownIsNotPublished(t *testing.T) {
 		t.Fatal("a session opened after shutdown began was installed")
 	}
 }
+
+func TestHandshakeDropsSilentPeerOnShortFirstFlightDeadline(t *testing.T) {
+	shortHandshakeTimeout(t, 5*time.Second)
+	previousFirstFlight := handshakeFirstFlightTimeout
+	handshakeFirstFlightTimeout = 120 * time.Millisecond
+	t.Cleanup(func() { handshakeFirstFlightTimeout = previousFirstFlight })
+
+	listener, listenerAddress := newTestIdentity(t)
+
+	// A peer that sends nothing is dropped on the short first-flight deadline, not the full handshake budget.
+	silentListenerSide, silentDialerSide := net.Pipe()
+	defer silentDialerSide.Close()
+	tracked := &countingConn{Conn: silentListenerSide}
+
+	started := time.Now()
+	_, err := listener.handshakeListener(listenerAddress, tracked)
+	elapsed := time.Since(started)
+	if err == nil {
+		t.Fatal("silent peer completed handshake")
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("silent peer held handshake for %v, expected close to %v", elapsed, handshakeFirstFlightTimeout)
+	}
+	if !tracked.closed.Load() {
+		t.Error("silent peer socket was not closed")
+	}
+
+	// A peer that sends its first flight promptly still gets the full handshakeTimeout for step three.
+	dialer, dialerAddress := newTestIdentity(t)
+	lSide, dSide := net.Pipe()
+	defer dSide.Close()
+
+	dialerErr := make(chan error, 1)
+	go func() {
+		if err := write(dSide, []byte(dialerAddress)); err != nil {
+			dialerErr <- err
+			return
+		}
+		dialerNonce := make([]byte, handshakeNonceSize)
+		if err := write(dSide, dialerNonce); err != nil {
+			dialerErr <- err
+			return
+		}
+		listenerNonce, err := read(dSide, handshakeNonceSize)
+		if err != nil {
+			dialerErr <- err
+			return
+		}
+		if _, err := read(dSide, arti.SignatureSize); err != nil {
+			dialerErr <- err
+			return
+		}
+		// Pause longer than handshakeFirstFlightTimeout before sending step three.
+		time.Sleep(250 * time.Millisecond)
+		sigPayload := make([]byte, 0, len(handshakeDomain)+1+len(listenerAddress)+2*handshakeNonceSize)
+		sigPayload = append(sigPayload, handshakeDomain...)
+		sigPayload = append(sigPayload, handshakeRoleDialer)
+		sigPayload = append(sigPayload, listenerAddress...)
+		sigPayload = append(sigPayload, dialerNonce...)
+		sigPayload = append(sigPayload, listenerNonce...)
+		dialerErr <- write(dSide, dialer.Sign(sigPayload))
+	}()
+
+	conn, err := listener.handshakeListener(listenerAddress, lSide)
+	if err != nil {
+		t.Fatalf("honest slow step-three peer failed: %v", err)
+	}
+	conn.Close()
+	if err := <-dialerErr; err != nil {
+		t.Fatalf("dialer write error: %v", err)
+	}
+}
+
+func TestAcceptPumpEvictsSilentPeersSoHonestDialerCompletes(t *testing.T) {
+	// Keep both timeouts long so silent peers will not expire on their own;
+	// the honest peer can only get through if the pump evicts an idle waiter.
+	shortHandshakeTimeout(t, 5*time.Second)
+	previousFirstFlight := handshakeFirstFlightTimeout
+	handshakeFirstFlightTimeout = 5 * time.Second
+	t.Cleanup(func() { handshakeFirstFlightTimeout = previousFirstFlight })
+
+	listener, listenerAddress := newTestIdentity(t)
+	fake := newFakeListener()
+	accepted, _, done := startPump(t, listener, listenerAddress, fake)
+
+	var inFlight atomic.Int64
+	var peak atomic.Int64
+	silentTracked := make([]*countingConn, 0, maxConcurrentHandshakes)
+	silentPeers := make([]net.Conn, 0, maxConcurrentHandshakes)
+	for i := 0; i < maxConcurrentHandshakes; i++ {
+		lSide, dSide := net.Pipe()
+		silentPeers = append(silentPeers, dSide)
+		cc := &countingConn{Conn: lSide}
+		silentTracked = append(silentTracked, cc)
+		fake.conns <- &countingSlotConn{Conn: cc, inFlight: &inFlight, peak: &peak}
+	}
+	defer func() {
+		for _, c := range silentPeers {
+			c.Close()
+		}
+	}()
+
+	// Wait until every handshake slot is occupied by a silent peer.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if inFlight.Load() == int64(maxConcurrentHandshakes) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := inFlight.Load(); got != int64(maxConcurrentHandshakes) {
+		t.Fatalf("only %d/%d silent slots filled", got, maxConcurrentHandshakes)
+	}
+
+	// Queue an honest peer behind the full silent backlog.
+	dialer, dialerAddress := newTestIdentity(t)
+	goodListenerSide, goodDialerSide := net.Pipe()
+	fake.conns <- goodListenerSide
+	go func() {
+		_, _ = dialer.handshakeDialer(dialerAddress, listenerAddress, goodDialerSide)
+	}()
+
+	select {
+	case conn := <-accepted:
+		if conn == nil {
+			t.Fatal("queue closed instead of delivering honest peer")
+		}
+		if got := conn.RemoteAddr().String(); got != dialerAddress {
+			t.Errorf("delivered peer %q, want %q", got, dialerAddress)
+		}
+		conn.Close()
+	case <-time.After(time.Second):
+		t.Fatal("silent backlog starved an honest dialer")
+	}
+
+	evicted := false
+	for _, cc := range silentTracked {
+		if cc.closed.Load() {
+			evicted = true
+			break
+		}
+	}
+	if !evicted {
+		t.Error("expected at least one silent waiter to be evicted when slots were full")
+	}
+
+	fake.stop()
+	done.Wait()
+}
