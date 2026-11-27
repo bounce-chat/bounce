@@ -413,6 +413,7 @@ func (b *Bounce) keepDatabasePruned() {
 			b.pruneUnverifiedUpdateGroups()
 			b.pruneEarlyConfirmations()
 			b.pruneEarlyReadReceipts()
+			b.pruneUnreferencedFiles()
 		}
 	}
 }
@@ -425,6 +426,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	b.pruneUnverifiedUpdateGroups()
 	b.pruneEarlyConfirmations()
 	b.pruneEarlyReadReceipts()
+	b.pruneUnreferencedFiles()
 
 	// Load the profile and sync devices
 	var profile *User

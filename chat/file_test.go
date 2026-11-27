@@ -826,3 +826,228 @@ func TestOnlyADownloadThatIsUnderWayIsEverRemoved(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 	assert.Equal(t, []string{underWay}, files.releases(), "the platform is told the engine is finished with the location")
 }
+
+func TestUnreferencedFilesAreNotWantedCappedAndPruned(t *testing.T) {
+	previousCap := maximumUnreferencedFilesPerAuthor
+	maximumUnreferencedFilesPerAuthor = 3
+	t.Cleanup(func() {
+		maximumUnreferencedFilesPerAuthor = previousCap
+	})
+
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	aliceXor := xor(me.currentUserID(), alice.currentUserID())
+	bobXor := xor(me.currentUserID(), bob.currentUserID())
+
+	makeSignedFileWithData := func(author *Bounce, scope, fileType int, dest, attachedTo ID, data []byte) (*file, []byte, []byte) {
+		f, err := author.prepareEmbeddedFile(data, scope, fileType)
+		assert.NoError(t, err)
+		f.Destination = dest
+		f.AttachedTo = attachedTo
+		f.OriginalPayload, err = msgpack.Marshal(f)
+		assert.NoError(t, err)
+		sc := author.createSignedContainer(typeFile, f.OriginalPayload)
+		f.Signature = sc.Signature
+		f.Signer = sc.Signer
+		fileWire, err := msgpack.Marshal(sc)
+		assert.NoError(t, err)
+		assert.NoError(t, author.database.Create(f).Error)
+
+		co := &chunkOffer{
+			ID:          NewID(),
+			Scope:       scope,
+			Destination: dest,
+			Author:      author.currentUserID(),
+			FileID:      f.ID,
+			Hash:        f.Chunks[0].Hash,
+			Location:    author.network.Address(),
+			Timestamp:   time.Now().Unix(),
+		}
+		co.OriginalPayload, err = msgpack.Marshal(co)
+		assert.NoError(t, err)
+		offerSC := author.createSignedContainer(typeChunkOffer, co.OriginalPayload)
+		offerWire, err := msgpack.Marshal(offerSC)
+		assert.NoError(t, err)
+		return f, fileWire, offerWire
+	}
+
+	// 1. An unreferenced embedded file from Alice is stored without marking it wanted or downloading to blobs/
+	orphanData := []byte("unreferenced spam payload " + NewID().String())
+	orphan1, orphan1Wire, orphan1OfferWire := makeSignedFileWithData(alice, scopeUser, fileTypeMessageAttachment, aliceXor, NewID(), orphanData)
+	br, first := me.handleFile(alice.network.Address(), orphan1Wire, false)
+	assert.True(t, br != nil && first)
+	br, first = me.handleChunkOffer(alice.network.Address(), orphan1OfferWire, false)
+	assert.True(t, br != nil && first)
+
+	// Even an active chunk engine tick and an unsolicited chunk delivery must not write to blobs/ while Wanted is false
+	me.makeAnyChunkRequests()
+	me.handleChunk(alice.network.Address(), (&chunk{FileID: orphan1.ID, Data: orphanData}).getPayload(), false)
+	time.Sleep(150 * time.Millisecond)
+
+	var storedOrphan file
+	assert.NoError(t, me.database.First(&storedOrphan, "id = ?", orphan1.ID).Error)
+	assert.False(t, storedOrphan.Referenced, "unreferenced file must not be marked referenced")
+	assert.False(t, storedOrphan.Wanted, "unreferenced file must not be marked wanted")
+	assert.False(t, storedOrphan.Downloaded, "unreferenced file must not be downloaded")
+	_, err := os.Stat(me.platform.ConfigDirectory + "/blobs/" + orphan1.ID.String())
+	assert.True(t, os.IsNotExist(err), "unreferenced file must not create a blob on disk")
+
+	// 2. Alice is capped at maximumUnreferencedFilesPerAuthor (3) unreferenced files
+	orphanIDs := []ID{orphan1.ID}
+	for i := 0; i < 4; i++ {
+		f, wire, _ := makeSignedFileWithData(alice, scopeUser, fileTypeMessageAttachment, aliceXor, NewID(), []byte("spam-"+NewID().String()))
+		br, first = me.handleFile(alice.network.Address(), wire, false)
+		if i < 2 {
+			assert.True(t, br != nil && first, "unreferenced file within cap should be stored")
+			orphanIDs = append(orphanIDs, f.ID)
+		} else {
+			assert.True(t, br == nil && !first, "unreferenced file over cap must be dropped")
+			var count int64
+			assert.NoError(t, me.database.Model(&file{}).Where("id = ?", f.ID).Count(&count).Error)
+			assert.Equal(t, int64(0), count, "dropped unreferenced file must not be stored")
+		}
+	}
+
+	// 3. Out-of-order attachment arrival: Bob's file arrives before its DM, stays unwanted, then activates and downloads once the DM arrives
+	bobData := []byte("legitimate out-of-order attachment " + NewID().String())
+	dm := &directMessage{
+		Nonce:     newNonce(),
+		WrittenAt: time.Now().Unix(),
+		Author:    bob.currentUserID(),
+		Xor:       bobXor,
+		Text:      "here is the attachment",
+	}
+	bobFile, err := bob.prepareEmbeddedFile(bobData, scopeUser, fileTypeMessageAttachment)
+	assert.NoError(t, err)
+	dm.FileAttachments = []fileAttachment{{
+		FileID: bobFile.ID,
+		Name:   "report.txt",
+		Size:   bobFile.Size,
+	}}
+	dm.ID = dm.generateID()
+	bobFile.Destination = bobXor
+	bobFile.AttachedTo = dm.ID
+	bobFile.OriginalPayload, err = msgpack.Marshal(bobFile)
+	assert.NoError(t, err)
+	bobFileSC := bob.createSignedContainer(typeFile, bobFile.OriginalPayload)
+	bobFile.Signature = bobFileSC.Signature
+	bobFile.Signer = bobFileSC.Signer
+	bobFileWire, err := msgpack.Marshal(bobFileSC)
+	assert.NoError(t, err)
+	assert.NoError(t, bob.database.Create(bobFile).Error)
+
+	bobOffer := &chunkOffer{
+		ID:          NewID(),
+		Scope:       scopeUser,
+		Destination: bobXor,
+		Author:      bob.currentUserID(),
+		FileID:      bobFile.ID,
+		Hash:        bobFile.Chunks[0].Hash,
+		Location:    bob.network.Address(),
+		Timestamp:   time.Now().Unix(),
+	}
+	bobOffer.OriginalPayload, err = msgpack.Marshal(bobOffer)
+	assert.NoError(t, err)
+	bobOfferWire, err := msgpack.Marshal(bob.createSignedContainer(typeChunkOffer, bobOffer.OriginalPayload))
+	assert.NoError(t, err)
+
+	br, first = me.handleFile(bob.network.Address(), bobFileWire, false)
+	assert.True(t, br != nil && first)
+	br, first = me.handleChunkOffer(bob.network.Address(), bobOfferWire, false)
+	assert.True(t, br != nil && first)
+
+	var bobStored file
+	assert.NoError(t, me.database.First(&bobStored, "id = ?", bobFile.ID).Error)
+	assert.False(t, bobStored.Referenced)
+	assert.False(t, bobStored.Wanted)
+
+	dm.OriginalPayload, err = msgpack.Marshal(dm)
+	assert.NoError(t, err)
+	dmWire, err := msgpack.Marshal(bob.createSignedContainer(typeDirectMessage, dm.OriginalPayload))
+	assert.NoError(t, err)
+	br, first = me.handleDirectMessage(bob.network.Address(), dmWire, false)
+	assert.True(t, br != nil && first)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		me.makeAnyChunkRequests()
+		assert.NoError(t, me.database.First(&bobStored, "id = ?", bobFile.ID).Error)
+		if bobStored.Downloaded {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.True(t, bobStored.Referenced, "file must become referenced once its DM arrives")
+	assert.True(t, bobStored.Wanted, "embedded file must become wanted once its DM arrives")
+	assert.True(t, bobStored.Downloaded, "activated embedded file must finish downloading")
+	gotData, err := me.GetFileData(bobFile.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, bobData, gotData)
+
+	// 4. Out-of-order user image arrival activates once its updateUser arrives
+	avatarData := []byte("user avatar bytes " + NewID().String())
+	avatarFile, avatarWire, avatarOfferWire := makeSignedFileWithData(bob, scopeGlobal, fileTypeUserImage, bob.currentUserID(), bob.currentUserID(), avatarData)
+	br, first = me.handleFile(bob.network.Address(), avatarWire, false)
+	assert.True(t, br != nil && first)
+	br, first = me.handleChunkOffer(bob.network.Address(), avatarOfferWire, false)
+	assert.True(t, br != nil && first)
+	var avatarStored file
+	assert.NoError(t, me.database.First(&avatarStored, "id = ?", avatarFile.ID).Error)
+	assert.False(t, avatarStored.Referenced)
+	assert.False(t, avatarStored.Wanted)
+
+	uu := updateUser{
+		Nonce:     newNonce(),
+		Target:    bob.currentUserID(),
+		Type:      updateUserTypeUpdateImage,
+		Data:      avatarFile.ID[:],
+		Timestamp: time.Now().Unix(),
+	}
+	uu.ID = uu.generateID()
+	uu.OriginalPayload, err = msgpack.Marshal(uu)
+	assert.NoError(t, err)
+	uuWire, err := msgpack.Marshal(bob.createSignedContainer(typeUpdateUser, uu.OriginalPayload))
+	assert.NoError(t, err)
+	br, first = me.handleUpdateUser(bob.network.Address(), uuWire, false)
+	assert.True(t, br != nil && first)
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		me.makeAnyChunkRequests()
+		assert.NoError(t, me.database.First(&avatarStored, "id = ?", avatarFile.ID).Error)
+		if avatarStored.Downloaded {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.True(t, avatarStored.Referenced)
+	assert.True(t, avatarStored.Wanted)
+	assert.True(t, avatarStored.Downloaded)
+
+	// 5. Pruning removes aged unreferenced files (and their chunks/offers) while keeping referenced large files that are still unwanted
+	source, largeData := largeSourceFile(t)
+	largeMsgID, largeSent := sendFile(t, bob, groupID, "referenced large", OutgoingAttachment{Name: "large.bin", Size: int64(len(largeData)), Source: source})
+	receiveFile(t, me, largeMsgID, largeSent.ID)
+	var largeStored file
+	assert.NoError(t, me.database.First(&largeStored, "id = ?", largeSent.ID).Error)
+	assert.True(t, largeStored.Referenced, "referenced large file must be marked referenced")
+	assert.False(t, largeStored.Wanted, "large file must stay unwanted until user asks to download it")
+
+	assert.NoError(t, me.database.Model(&file{}).Where("id IN ?", append(orphanIDs, largeSent.ID)).Update("saved_at", int64(1)).Error)
+	me.pruneUnreferencedFiles()
+
+	var remainingOrphans int64
+	assert.NoError(t, me.database.Model(&file{}).Where("id IN ?", orphanIDs).Count(&remainingOrphans).Error)
+	assert.Equal(t, int64(0), remainingOrphans, "aged unreferenced files must be pruned")
+
+	var remainingOrphanChunks int64
+	assert.NoError(t, me.database.Model(&chunk{}).Where("file_id IN ?", orphanIDs).Count(&remainingOrphanChunks).Error)
+	assert.Equal(t, int64(0), remainingOrphanChunks, "chunks of pruned unreferenced files must be removed")
+
+	var remainingOrphanOffers int64
+	assert.NoError(t, me.database.Model(&chunkOffer{}).Where("file_id IN ?", orphanIDs).Count(&remainingOrphanOffers).Error)
+	assert.Equal(t, int64(0), remainingOrphanOffers, "chunk offers of pruned unreferenced files must be removed")
+
+	var remainingLarge int64
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", largeSent.ID).Count(&remainingLarge).Error)
+	assert.Equal(t, int64(1), remainingLarge, "referenced large file must not be pruned even while Wanted is false")
+}

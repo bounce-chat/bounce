@@ -77,8 +77,15 @@ const fileTypeUserImage = 1
 const fileTypeMessageAttachment = 2
 
 var fileMutex sync.Mutex
+var fileReferrerMutex sync.Mutex
 var chunkOfferMutex sync.Mutex
 var chunkMutex sync.Mutex
+
+// An unreferenced file frame is kept briefly in case its message or image update arrives right behind it,
+// without marking it wanted or writing anything to blobs/.  Capping the unreferenced backlog per author and
+// pruning orphans after a day stops a peer from filling disk or the files table with unreferenced small files.
+var maximumUnreferencedFilesPerAuthor = int64(128)
+var unreferencedFileLifetime = 24 * time.Hour
 
 var ErrFileTooBig = errors.New("file is too large")
 var ErrFileEmpty = errors.New("file is empty")
@@ -102,9 +109,10 @@ type file struct {
 	Path               string `msgpack:"-" gorm:"not null"`
 	Wanted             bool   `msgpack:"-"`
 	Downloaded         bool   `msgpack:"-" gorm:"index:idx_file_downloaded"`
+	Referenced         bool   `msgpack:"-" gorm:"index:idx_file_referenced_author,priority:1"`
 	Scope              int
 	Destination        ID
-	Author             ID
+	Author             ID `gorm:"index:idx_file_referenced_author,priority:2"`
 	Timestamp          int64
 	SavedAt            int64   `msgpack:"-"`
 	Chunks             []chunk `msgpack:"-"`
@@ -538,74 +546,345 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		f.Chunks = append(f.Chunks, c)
 	}
 
-	// We don't want to auto-download message attachments from threads that aren't regularly read
-	if (f.Type == fileTypeGroupImage || f.Type == fileTypeUserImage) && f.embedded() {
-		f.Wanted = true
-	}
-	if f.Type == fileTypeMessageAttachment && f.embedded() {
-		f.Wanted = true
-	}
 	if f.embedded() {
 		f.Path = b.platform.ConfigDirectory + "/blobs/" + f.ID.String()
 		f.LocalKey = newLocalKey()
 	}
 
+	// Only mark embedded files wanted once a stored message, user, or group references them.
+	// Unreferenced files are capped per author so a peer cannot flood the files table or blobs/.
+	fileReferrerMutex.Lock()
+	f.Referenced = b.fileHasReferrer(f)
+	if !f.Referenced {
+		var unreferenced int64
+		err = b.database.Model(&file{}).Where("referenced = ? AND author = ?", false, f.Author).Count(&unreferenced).Error
+		if err != nil {
+			fileReferrerMutex.Unlock()
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error counting unreferenced files")
+		}
+		if unreferenced >= maximumUnreferencedFilesPerAuthor {
+			fileReferrerMutex.Unlock()
+			log.WithFields(log.Fields{
+				"id":     f.ID,
+				"author": f.Author,
+				"peer":   peer,
+			}).Warn("ignoring unreferenced file because author reached unreferenced file cap")
+			return nil, false
+		}
+	}
+	if f.Referenced && f.embedded() {
+		f.Wanted = true
+	}
+
 	// Save the new file
 	err = b.database.Create(&f).Error
+	fileReferrerMutex.Unlock()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving file")
 	}
 
-	// Copy data from existing local chunks only for our own files (e.g., sync devices); another user's file
-	// must never inherit bytes from an unrelated local conversation.  Load any early offers for this file.
-	go func() {
-		for _, c := range f.Chunks {
-			var data []byte
-			err := errChunkDataNotFound
-			if f.Author == b.currentUserID() {
-				data, err = b.getChunkData(c.Hash)
-			}
-			if err == nil {
-				c.Data = data
-				b.writeChunkToDisk(c)
-			} else {
-				// If we have any chunk offers that came in
-				// before the file, load them into the chunk
-				// engine now
-				var offers []chunkOffer
-				err = b.database.Where("file_id = ? AND hash = ?", f.ID, c.Hash).Find(&offers).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("database error looking up chunk offers")
-				}
-				for _, co := range offers {
-					b.addChunkOfferToChunkEngine(&co)
-				}
-
-				if c.EncryptedHash != "" {
-					var encryptedOffers []encryptedChunkOffer
-					err = b.database.Where("hash = ?", c.EncryptedHash).Find(&encryptedOffers).Error
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("database error looking up encrypted chunk offers")
-					}
-					for _, eco := range encryptedOffers {
-						b.addEncryptedChunkOfferToChunkEngine(&eco)
-					}
-				}
-			}
-		}
-	}()
+	if f.Wanted {
+		go b.startEmbeddedFileDownload(f)
+	}
 
 	return &f, true
 }
 
 func (f *file) embedded() bool {
 	return f.Size <= EmbeddedFileLimit
+}
+
+// startEmbeddedFileDownload fills an embedded file from local chunks (only for our own files, e.g. sync devices)
+// or feeds any chunk offers that arrived before the file became wanted into the chunk engine.
+func (b *Bounce) startEmbeddedFileDownload(f file) {
+	for _, c := range f.Chunks {
+		var data []byte
+		err := errChunkDataNotFound
+		if f.Author == b.currentUserID() {
+			data, err = b.getChunkData(c.Hash)
+		}
+		if err == nil {
+			c.Data = data
+			b.writeChunkToDisk(c)
+		} else {
+			// If we have any chunk offers that came in
+			// before the file became wanted, load them into the chunk
+			// engine now
+			var offers []chunkOffer
+			err = b.database.Where("file_id = ? AND hash = ?", f.ID, c.Hash).Find(&offers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up chunk offers")
+			}
+			for _, co := range offers {
+				b.addChunkOfferToChunkEngine(&co)
+			}
+
+			if c.EncryptedHash != "" {
+				var encryptedOffers []encryptedChunkOffer
+				err = b.database.Where("hash = ?", c.EncryptedHash).Find(&encryptedOffers).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error looking up encrypted chunk offers")
+				}
+				for _, eco := range encryptedOffers {
+					b.addEncryptedChunkOfferToChunkEngine(&eco)
+				}
+			}
+		}
+	}
+}
+
+// fileHasReferrer reports whether a stored message, user record, or applied group state references f.
+// It queries SQLite directly and must not acquire consensus or handler locks because callers hold fileReferrerMutex.
+func (b *Bounce) fileHasReferrer(f file) bool {
+	switch f.Type {
+	case fileTypeMessageAttachment:
+		if f.AttachedTo == NilID {
+			return false
+		}
+		var messageCount int64
+		switch f.Scope {
+		case scopeGroup:
+			err := b.database.Model(&groupMessage{}).
+				Where("id = ? AND author = ? AND destination = ?", f.AttachedTo, f.Author, f.Destination).
+				Count(&messageCount).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error checking group message referrer for file")
+			}
+		case scopeUser, scopeSync:
+			err := b.database.Model(&directMessage{}).
+				Where("id = ? AND author = ? AND xor = ?", f.AttachedTo, f.Author, f.Destination).
+				Count(&messageCount).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error checking direct message referrer for file")
+			}
+		default:
+			return false
+		}
+		if messageCount == 0 {
+			return false
+		}
+
+		var imageCount int64
+		err := b.database.Model(&imageAttachment{}).
+			Where("file_id = ? AND message_id = ?", f.ID, f.AttachedTo).
+			Count(&imageCount).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking image attachment referrer for file")
+		}
+		if imageCount > 0 {
+			return true
+		}
+
+		var fileCount int64
+		err = b.database.Model(&fileAttachment{}).
+			Where("file_id = ? AND message_id = ?", f.ID, f.AttachedTo).
+			Count(&fileCount).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking file attachment referrer for file")
+		}
+		return fileCount > 0
+
+	case fileTypeUserImage:
+		var u user
+		err := b.database.Select("images").Where("id = ?", f.Author).Take(&u).Error
+		if err == nil {
+			if slices.Contains(u.images(), f.ID) {
+				return true
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking user referrer for image file")
+		}
+
+		var updateCount int64
+		err = b.database.Model(&updateUser{}).
+			Where("target = ? AND type = ? AND data = ?", f.Author, updateUserTypeUpdateImage, f.ID[:]).
+			Count(&updateCount).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking update user referrer for image file")
+		}
+		return updateCount > 0
+
+	case fileTypeGroupImage:
+		var g group
+		err := b.database.Select("images").Where("id = ?", f.Destination).Take(&g).Error
+		if err == nil {
+			images, _ := parseIDList(g.Images)
+			if slices.Contains(images, f.ID) {
+				return true
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking group referrer for image file")
+		}
+
+		var gc groupCreation
+		err = b.database.Select("data").Where("id = ?", f.Destination).Take(&gc).Error
+		if err == nil {
+			var initialGroup group
+			if unmarshalErr := msgpack.Unmarshal(gc.Data, &initialGroup); unmarshalErr == nil {
+				images, _ := parseIDList(initialGroup.Images)
+				if slices.Contains(images, f.ID) {
+					return true
+				}
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking group creation referrer for image file")
+		}
+
+		var updateCount int64
+		err = b.database.Model(&updateGroup{}).
+			Where("target = ? AND type = ? AND data = ? AND applied = ?", f.Destination, updateGroupTypeSetImage, f.ID[:], true).
+			Count(&updateCount).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking update group referrer for image file")
+		}
+		return updateCount > 0
+
+	default:
+		return false
+	}
+}
+
+// activateReferencedFile promotes a previously stored unreferenced file once its referrer has been persisted,
+// and starts downloading it if it is an embedded file.
+func (b *Bounce) activateReferencedFile(fileID ID) {
+	if fileID == NilID {
+		return
+	}
+
+	var f file
+	startDownload := false
+
+	fileReferrerMutex.Lock()
+	err := b.database.Preload("Chunks").Where("id = ? AND referenced = ?", fileID, false).First(&f).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		fileReferrerMutex.Unlock()
+		return
+	}
+	if err != nil {
+		fileReferrerMutex.Unlock()
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up unreferenced file to activate")
+	}
+	if !b.fileHasReferrer(f) {
+		fileReferrerMutex.Unlock()
+		return
+	}
+
+	updates := map[string]any{"referenced": true}
+	if f.embedded() && !f.Downloaded {
+		f.Wanted = true
+		updates["wanted"] = true
+		startDownload = true
+	}
+	err = b.database.Model(&file{}).Where("id = ?", f.ID).Updates(updates).Error
+	fileReferrerMutex.Unlock()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error activating referenced file")
+	}
+
+	if startDownload {
+		go b.startEmbeddedFileDownload(f)
+	}
+}
+
+func (b *Bounce) activateReferencedAttachments(images []imageAttachment, files []fileAttachment) {
+	for _, ia := range images {
+		b.activateReferencedFile(ia.FileID)
+	}
+	for _, fa := range files {
+		b.activateReferencedFile(fa.FileID)
+	}
+}
+
+// pruneUnreferencedFiles drops file records (along with their chunks and chunk offers via AfterDelete)
+// that never received a matching referrer within unreferencedFileLifetime.
+func (b *Bounce) pruneUnreferencedFiles() {
+	cutoff := time.Now().Unix() - int64(unreferencedFileLifetime.Seconds())
+	var ids []ID
+	err := b.database.Model(&file{}).
+		Where("referenced = ? AND saved_at < ?", false, cutoff).
+		Pluck("id", &ids).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error finding unreferenced files to prune")
+	}
+
+	for _, id := range ids {
+		var f file
+		startDownload := false
+
+		fileReferrerMutex.Lock()
+		err := b.database.Preload("Chunks").Where("id = ? AND referenced = ?", id, false).First(&f).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			fileReferrerMutex.Unlock()
+			continue
+		}
+		if err != nil {
+			fileReferrerMutex.Unlock()
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error reloading unreferenced file to prune")
+		}
+
+		if b.fileHasReferrer(f) {
+			updates := map[string]any{"referenced": true}
+			if f.embedded() && !f.Downloaded {
+				f.Wanted = true
+				updates["wanted"] = true
+				startDownload = true
+			}
+			err = b.database.Model(&file{}).Where("id = ?", f.ID).Updates(updates).Error
+			fileReferrerMutex.Unlock()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error promoting referenced file during prune")
+			}
+			if startDownload {
+				go b.startEmbeddedFileDownload(f)
+			}
+			continue
+		}
+
+		err = deleteEach[file](b.database, "id = ?", f.ID)
+		fileReferrerMutex.Unlock()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    f.ID,
+				"error": err.Error(),
+			}).Error("error pruning unreferenced file")
+		}
+	}
 }
 
 type chunkOffer struct {
@@ -1044,6 +1323,16 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 
 			b.sendDirect(peer, &chunk{Data: encryptedData})
 		} else {
+			peerDev, peerKnown := b.getDeviceFromAddress(peer)
+			if !peerKnown || peerDev.RevokedAt != 0 || blockedUser(peerDev.UserID) {
+				log.WithFields(log.Fields{
+					"peer":    peer,
+					"file_id": cr.FileID,
+					"hash":    cr.Hash,
+				}).Warn("ignoring chunk request from unknown, revoked, or blocked peer")
+				return nil, false
+			}
+
 			// Look up the specific file requested and authorize the peer against that file alone
 			var f file
 			err := b.database.First(&f, "id = ?", cr.FileID).Error
@@ -1818,6 +2107,7 @@ func (b *Bounce) prepareEmbeddedFile(data []byte, scope int, fileType int) (*fil
 		Size:               int64(len(data)),
 		Wanted:             true,
 		Downloaded:         true,
+		Referenced:         true,
 		Scope:              scope,
 		Timestamp:          time.Now().Unix(),
 		Author:             b.currentUserID(),
@@ -1885,6 +2175,7 @@ func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file,
 		Size:       info.Size(),
 		Wanted:     true,
 		Downloaded: true,
+		Referenced: true,
 		Scope:      scope,
 		Timestamp:  time.Now().Unix(),
 		Author:     b.currentUserID(),
@@ -1964,6 +2255,7 @@ func (b *Bounce) prepareCopiedFile(source io.Reader, scope int, fileType int) (*
 		Size:       size,
 		Wanted:     true,
 		Downloaded: true,
+		Referenced: true,
 		Scope:      scope,
 		Timestamp:  time.Now().Unix(),
 		Author:     b.currentUserID(),

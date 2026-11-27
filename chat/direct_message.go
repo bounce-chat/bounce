@@ -298,6 +298,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"error": err.Error(),
 		}).Fatal("error saving incoming direct message")
 	}
+	b.activateReferencedAttachments(dm.ImageAttachments, dm.FileAttachments)
 
 	// Expire the message on time if it has a retention
 	if dm.DeleteAt != 0 {

@@ -908,6 +908,9 @@ func (b *Bounce) writeGroupStateToDatabase(initialGroup group, allUsers []user, 
 	if err != nil {
 		return err
 	}
+	for _, imageID := range gs.images {
+		b.activateReferencedFile(imageID)
+	}
 
 	// Set group admins
 	admins, err := parseIDList(g.Admins)
@@ -1100,6 +1103,11 @@ func (b *Bounce) saveCarriedUser(u user, groupID ID) (bool, bool) {
 			"error": res.Error.Error(),
 		}).Error("error saving user that is being added to a group")
 		return false, false
+	}
+	if res.RowsAffected == 1 {
+		for _, imageID := range u.images() {
+			b.activateReferencedFile(imageID)
+		}
 	}
 
 	return res.RowsAffected == 1, true

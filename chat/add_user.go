@@ -556,6 +556,9 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 			return nil, false
 		}
 		counterparty.Devices = b.saveCarriedDevices(counterparty.Devices)
+		for _, imageID := range counterparty.images() {
+			b.activateReferencedFile(imageID)
+		}
 	}
 	b.applyCarriedDeviceRevocations(peer, counterparty)
 

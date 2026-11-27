@@ -319,6 +319,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			"error": err.Error(),
 		}).Fatal("error saving group message")
 	}
+	b.activateReferencedAttachments(gm.ImageAttachments, gm.FileAttachments)
 
 	// Expire the message on time if it has a retention
 	if gm.DeleteAt != 0 {

@@ -243,6 +243,10 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}).Error("error saving new group creation")
 		return nil, false
 	}
+	groupImages, _ := parseIDList(g.Images)
+	for _, imageID := range groupImages {
+		b.activateReferencedFile(imageID)
+	}
 
 	// Ack and delivery track all of the devices included in this group creation
 	for _, u := range g.Users {

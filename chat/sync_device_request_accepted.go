@@ -158,6 +158,9 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			"error": err.Error(),
 		}).Fatal("error saving new sync profile")
 	}
+	for _, imageID := range sdra.Profile.images() {
+		b.activateReferencedFile(imageID)
+	}
 	b.applyCarriedDeviceRevocations(peer, sdra.Profile)
 	b.broadcast(&sdra.Profile.Devices[localDeviceIndex])
 	b.createAndShareDeviceECDHKey()

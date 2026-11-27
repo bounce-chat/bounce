@@ -457,6 +457,9 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	case updateUserTypeUpdateName:
 		b.informUIUpdateUserUpdateName(uu)
 	case updateUserTypeUpdateImage:
+		if imageID, err := IDFromBytes(uu.Data); err == nil {
+			b.activateReferencedFile(imageID)
+		}
 		b.informUIUpdateUserUpdateImage(uu)
 	case updateUserTypeAddEncryptedDevice:
 		// Encrypted devices do not create status changes
