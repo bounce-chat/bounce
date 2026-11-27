@@ -87,7 +87,7 @@ func (b *Bounce) acceptConnections() {
 				"fatal": fatal,
 			}).Error("accepted nil connection")
 		} else {
-			go b.insertConnectionIntoDevicePool(conn)
+			b.background(func() { b.insertConnectionIntoDevicePool(conn) })
 		}
 	}
 }

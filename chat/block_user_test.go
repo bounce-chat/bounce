@@ -216,8 +216,19 @@ func TestBlockedUserCannotUpdateDM(t *testing.T) {
 		blockedUsersMutex.Unlock()
 	})
 
+	// Drain any pre-block handleUpdateDM from setup and wait for BlockUser's async updateDMState to settle.
+	updateDMMutex.Lock()
+	updateDMMutex.Unlock()
 	var beforeUser user
-	assert.NoError(t, me.database.First(&beforeUser, "id = ?", malloryID).Error)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		assert.NoError(t, me.database.First(&beforeUser, "id = ?", malloryID).Error)
+		if beforeUser.Blocked {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.True(t, beforeUser.Blocked, "BlockUser's async updateDM must settle before snapshotting")
 
 	freshPeer := bnc01NewOnion().addr()
 	now := time.Now().Unix()

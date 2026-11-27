@@ -186,13 +186,21 @@ func (b *Bounce) sendReferences(peer string) {
 	state.Unlock()
 
 	for {
+		if b.shutdownStarted.Load() {
+			state.Lock()
+			state.pending = false
+			state.running = false
+			state.Unlock()
+			return
+		}
 		b.sendReferenceOffer(peer)
 
 		state.Lock()
-		if state.pending {
+		if state.pending && !b.shutdownStarted.Load() {
 			state.pending = false
 			state.Unlock()
 		} else {
+			state.pending = false
 			state.running = false
 			state.Unlock()
 			return
@@ -201,6 +209,9 @@ func (b *Bounce) sendReferences(peer string) {
 }
 
 func (b *Bounce) sendReferenceOffer(peer string) {
+	if b.shutdownStarted.Load() {
+		return
+	}
 	if _, exists := b.currentUser(); !exists {
 		// Our profile hasn't been setup yet, we have nothing to offer
 		return
@@ -245,7 +256,10 @@ func (b *Bounce) sendReferenceOffer(peer string) {
 		b.sendDirect(peer, referenceOffer)
 
 		// Wait for an ack before checking if it was delivered
-		time.Sleep(referenceRetryInterval())
+		if !b.sleepOrDone(referenceRetryInterval()) {
+			b.clearPendingReferenceOffer(peer, referenceOffer.ID)
+			return
+		}
 
 		if b.consumePendingReferenceOfferAck(peer, referenceOffer.ID) {
 			return

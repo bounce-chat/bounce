@@ -242,14 +242,16 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) int {
 	b.makeReferenceRequests()
 	referenceRequestMutex.Unlock()
 
-	go func() {
+	b.background(func() {
 		// If the request we generated from this offer fails, check after the expiration to see if any other
 		// devices have offered the same references or if we should try this peer again
-		time.Sleep(referenceRetryInterval() + time.Second)
+		if !b.sleepOrDone(referenceRetryInterval() + time.Second) {
+			return
+		}
 		referenceRequestMutex.Lock()
 		b.makeReferenceRequests()
 		referenceRequestMutex.Unlock()
-	}()
+	})
 
 	return dropped
 }
